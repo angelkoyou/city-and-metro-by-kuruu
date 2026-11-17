@@ -1,0 +1,33 @@
+# Local credentials and machine-specific files
+.env
+.env.*
+!.env.example
+.dev.vars
+.dev.vars.*
+*.pem
+*.key
+.codex/
+.agents/
+.claude/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Generated deployment files and tooling
+dist/
+node_modules/
+.wrangler/
+.tools/
+*.log
+*.tmp
+
+# 本机测试截图与校对素材（体积大，不进仓库；需要时本地重跑 scripts/test-*.mjs 生成）
+shots/
+
+# 本地助手的工作记录（项目约定/日志），不属于源码
+.workbuddy/
+
+# Office / WPS 打开文件时产生的锁文件
+~$*
+
