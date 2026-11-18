@@ -3217,8 +3217,12 @@ body.cinema #immExit { top: max(12px, env(safe-area-inset-top)); right: max(12px
 .fo-sum b { font-size: 13px; font-variant-numeric: tabular-nums; }
 .fo-sum b.bad, .fo-tbl td.bad, .fo-tbl small.bad { color: var(--bad); }
 .fo-svc { margin: 8px 0; padding: 10px; border-radius: 14px; border: 1px solid var(--line); background: var(--surface-solid); }
-.fo-svc-h { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
-.fo-svc-h .swatch { width: 14px; height: 6px; }
+/* v4.6：交路名独占一行，指标标签另起一行换行排列，窄侧栏里名称不会再被挤成竖排 */
+.fo-svc-h { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.fo-svc-h b { font-size: 13.5px; line-height: 1.35; word-break: break-word; }
+.fo-svc-h .swatch { width: 14px; height: 6px; flex: none; }
+.fo-svc-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin-bottom: 8px; }
+.fo-svc-meta .tag { font-size: 11px; padding: 1px 7px; }
 .fo-units { display: grid; gap: 4px; }
 .fo-unit { display: flex; align-items: center; gap: 8px; padding: 5px 6px; border-radius: 10px; background: var(--surface-2); }
 .fo-unit b { display: block; font-size: 12.5px; }

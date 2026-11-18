@@ -8681,4 +8681,12 @@ Object.assign(window.CM.I18N_EN, {
   "本站可换乘：": "Transfer to: ",
   "预留换乘 · 补建为正式站后启用换乘": "Planned interchange - transfers become available once built out as a full station",
   "悬停查看本站可换乘的线路": "Hover to see the lines available at this station",
+  // v4.7：交路卡片排版修正
+  "交路卡片排版修正：交路名独占一行": "Service card layout fix: service names get their own line",
+  "「列车运营」页每张交路卡片里，交路名现在单独占一行，不再和右侧指标挤在同一条线上。": "On the Train Operations page, each service card now gives the service name a line of its own instead of squeezing it next to the metrics on the right.",
+  "日客流、周转时间与最长编组三个标签移到名称下方，空间不够时自动换行排列，不再压缩名称宽度。": "The daily ridership, turnaround time and longest formation tags now sit below the name and wrap automatically when space runs short, so they no longer eat into the name's width.",
+  "窄侧栏与手机宽度下不会再出现交路名被挤成一字一行的竖排，环线的「顺行 / 逆行」也能完整读到。": "In a narrow sidebar or on a phone, service names no longer collapse into a vertical stack of single characters, and a loop line's clockwise / counter-clockwise direction stays fully readable.",
+  "玩家自定义的长交路名按整行宽度显示，超长时在名称行内自然折行，不会顶到指标标签或按钮。": "Long custom service names now use the full width of their row and wrap naturally within it, without pushing into the metric tags or buttons.",
+  "本次只调整排版与样式，速度、客流、交路统计与筛选口径一律不变，已有存档与运营数据不受影响。": "This release only changes layout and styling; speed, ridership, service statistics and filtering rules are unchanged, and existing saves and operating data are unaffected.",
+  "车队总览的线路分组标题也按同一标准核对过：窄屏下线路名保持横排，日客流与配属数字仍靠右对齐。": "The line group headings in the fleet overview were checked against the same standard: line names stay horizontal on narrow screens while daily ridership and fleet counts remain right-aligned.",
 });

@@ -1086,7 +1086,9 @@
       card.appendChild(h('div', { class: 'fo-svc-kind' }, h('span', { class: 'tiny muted grow' }, kindOf(s)),
         s.svc ? h('button', { class: 'btn sm ghost', onclick: function () { self.showServiceEditor(lid, s.svc); } }, ic('pencil', 13), '编辑') : null,
         s.svc && (s.d === 0 || !s.rt.loop) ? h('button', { class: 'btn sm ghost', 'data-tip': '取消这个交路，列车回到全程交路', onclick: function () { const r = F.removeService(g, lid, s.svc); if (r.error) self.toast(r.error, 'bad'); else { sfx('serviceDel'); self.toast('已取消交路，列车回到全程交路', 'info'); done(); } } }, ic('close', 13), '取消') : null));
-      card.appendChild(h('div', { class: 'fo-svc-h' }, h('span', { class: 'swatch', style: { background: lineColor(g, lid) } }), h('b', { class: 'grow' }, s.name),
+      // v4.6：交路名单独占一行，指标标签另起一行；否则窄侧栏里名称会被标签挤成一字一行的竖排
+      card.appendChild(h('div', { class: 'fo-svc-h' }, h('span', { class: 'swatch', style: { background: lineColor(g, lid) } }), h('b', { class: 'grow' }, s.name)));
+      card.appendChild(h('div', { class: 'fo-svc-meta' },
         dailyOk ? h('span', { class: 'tag' }, '日客流 {n} 人次'.replace('{n}', U.fmtPeople(svcRiders.get(s.r + ':' + s.d) || 0))) : null,
         h('span', { class: 'tag' }, '周转 ' + Math.round(s.cycleMin) + ' 分钟'), h('span', { class: 'tag' }, '最长 ' + s.maxCars + ' 节')));
       const ids = new Set((pl[s.r] ? pl[s.r].units[s.d] : []).map(function (u) { return u.id; })); ids.forEach(function (id) { onRoute.add(id); });
