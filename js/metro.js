@@ -755,9 +755,8 @@
   // 环线的交路只能跳站（首站固定停靠），不能折返。返回所在路线序号与停靠站在路线上的序号；车站已不在线路上时返回 null
   M.svcStops = function (tp, sv) {
     const skip = new Set(sv.skip || []);
-    // v4.6：预留站与已停用站没有站台，不能作为交路中间停靠站；编辑器把它们写进 skip，编译期兜一次底。
-    // 端点（非环线）与首站（环线）必须保留：patternRoute 要靠它们首尾闭合、切出完整几何，
-    // 这些站即使没有站台也照样会被 buildMetro 的 shut 边屏蔽上下客，不会产生客流。
+    // v4.8：停用站与预留站视为不在线路上——既不能作为停靠站，也不能作为交路端点。
+    // 端点正好落在这些站上时，自动收敛到同侧最近的可停靠站（相当于折返点前移）。
     const open = function (s) {
       const st = tp.net && tp.net.stations && tp.net.stations[s];
       return st ? M.stationOpen(st) : true;
@@ -767,12 +766,15 @@
       if (sv.via && st.indexOf(sv.via) < 0) continue;
       if (rt.loop) {
         if (sv.from || sv.to) continue;
-        const stops = []; st.forEach(function (s, i) { if (i === 0 || (!skip.has(s) && open(s))) stops.push(i); });
-        return stops.length >= 2 ? { ri: ri, stops: stops, loop: true } : null;
+        const stops = []; st.forEach(function (s, i) { if (!skip.has(s) && open(s)) stops.push(i); });
+        return stops.length >= 2 ? { ri: ri, stops: stops, loop: true, ia: stops[0], ib: stops[stops.length - 1] } : null;
       }
       let ia = sv.from ? st.indexOf(sv.from) : 0, ib = sv.to ? st.indexOf(sv.to) : st.length - 1;
-      if (ia < 0 || ib < 0 || ia === ib) continue;
+      if (ia < 0 || ib < 0) continue;
       if (ia > ib) { const t = ia; ia = ib; ib = t; }
+      while (ia < ib && !open(st[ia])) ia++;
+      while (ib > ia && !open(st[ib])) ib--;
+      if (ia === ib) continue;
       const stops = [];
       for (let i = ia; i <= ib; i++) if (i === ia || i === ib || (!skip.has(st[i]) && open(st[i]))) stops.push(i);
       return { ri: ri, stops: stops, ia: ia, ib: ib, loop: false };
@@ -1155,7 +1157,7 @@
   // 缺省按轨道设计速度编译；Fleet 每次重算时刻表时也会从 legVBase/legCurve 复核，保证两处口径一致。
   M.compile = function (net, city, runKmh) { return M.withSegIndex([net], function () { return compile(net, city, runKmh); }); };
   function compile(net, city, runKmh) {
-    const C = { net: net, stations: [], sIndex: new Map(), segs: new Map(), lines: [], routes: [], topo: new Map() };
+    const C = { net: net, stations: [], sIndex: new Map(), segs: new Map(), lines: [], routes: [], topo: new Map(), bases: {} };
     const ids = M.sortIds(Object.keys(net.stations));
     ids.forEach(function (id, k) { C.sIndex.set(id, k); C.stations.push(net.stations[id]); });
     for (const id in net.segments) {
@@ -1181,7 +1183,7 @@
       C.lines.push(line);
       if (tp.topo === 'invalid' || tp.topo === 'empty') continue;
       if (tp.routes.some(function (rt) { return rt.segs.some(function (ref) { return !C.segs.has(ref.id); }); })) continue;
-      const designKmh = M.lineKmh(line), grade = M.speedGrade(line), bases = [];   // 运行速度按建设方式的基准速度等比调整（未设定为 80 km/h，即基准速度）
+      const designKmh = M.lineKmh(line), grade = M.speedGrade(line), bases = [], baseOk = [];   // 运行速度按建设方式的基准速度等比调整（未设定为 80 km/h，即基准速度）
       // v4.6：轨道设计速度是上限，配属列车里最慢的车型会进一步压低实际运行速度；慢车仍可上线，只是降速运行
       const cap0 = U.clamp(runKmh && runKmh[lid] > 0 ? runKmh[lid] : designKmh, 1, designKmh), kv = cap0 / 80;
       tp.routes.forEach(function (rt, ri) {
@@ -1223,24 +1225,47 @@
           nStops: rt.st.filter(function (sid) { return M.stationOpen(net.stations[sid]); }).length,   // 实际停靠站数（预留站与停用站通过不停）
           cars: minCars, cap: minCars * mc.carCap, runSec: runSec, cycleSec: cycleSec, lenM: cum[cum.length - 1] * CFG.CELL_M, kmh: designKmh, runKmh: cap0, opsK: grade.ops,
         };
-        C.routes.push(route); bases.push(route);
+        // v4.8：停用站与预留站视为不存在——运营路线只保留可停靠站：
+        // 中间站直接跳过（区间合并、不再减速停站），端点被停用时折返点前移到同侧最近的可停靠站。
+        // 完整路线仍留在 C.bases 里（不做运营），供交路编辑器与 svcStops 的站点索引换算使用。
+        bases.push(route);
+        route.id = C.routes.length;
+        const openIdx = [];
+        rt.st.forEach(function (sid, i) { if (M.stationOpen(net.stations[sid])) openIdx.push(i); });
+        if (openIdx.length === rt.st.length) { C.routes.push(route); baseOk.push(true); return; }
+        if (openIdx.length < 2) { baseOk.push(false); return; }   // 可停靠站不足两座：这条路线停止运营
+        const op = M.patternRoute(C, line, route, { id: null, name: line.name }, { stops: openIdx, ia: openIdx[0], ib: openIdx[openIdx.length - 1], loop: rt.loop });
+        op.id = route.id; op.svc = null; op.label = route.label;
+        op.branch = route.branch; op.main = route.main; op.nStops = op.stIds.length;
+        op.closedEnds = [];
+        if (!rt.loop) {
+          if (!M.stationOpen(net.stations[rt.st[0]])) op.closedEnds.push(rt.st[0]);
+          const lastId = rt.st[rt.st.length - 1];
+          if (!M.stationOpen(net.stations[lastId])) op.closedEnds.push(lastId);
+        }
+        C.routes.push(op); baseOk.push(true);
       });
+      C.bases[lid] = bases;
       // 玩家加开的交路（快慢车、区间车）：编译为独立的运营路线，排在全程路线之后，各自配车、发车与计客流
       for (const sv of line.svcs || []) {
         const plan = M.svcStops(tp, sv);
-        if (plan && bases[plan.ri]) { const r = M.patternRoute(C, line, bases[plan.ri], sv, plan); r.id = C.routes.length; C.routes.push(r); }
+        if (plan && bases[plan.ri] && baseOk[plan.ri]) { const r = M.patternRoute(C, line, bases[plan.ri], sv, plan); r.id = C.routes.length; C.routes.push(r); }
       }
     }
-    // 车站服务线路（v2.8.3 / v4.5）：预留站与停用站都可以接轨，线路计入 stationTracks
-    // （结构接入，供界面显示与绘线使用）；但没有站台服务，不计入 stationRoutes / stationLines
-    // （停靠与换乘语义），因而不停车、不分客流、不能换乘。
-    // 预留站补建为正式站、或停用站恢复运营后，编译结果自动按正式站规则生效。
+    // 车站服务线路（v2.8.3 / v4.5 / v4.8）：
+    // stationTracks 是「轨道结构接入」，按线路拓扑统计——预留站与停用站的轨道仍然接在这条线上，随时可以恢复；
+    // stationRoutes / stationLines 是「停靠与换乘」，只统计运营路线实际停靠的站（停用站与预留站视为不存在）。
     C.stationRoutes = C.stations.map(function () { return []; });
     C.stationLines = C.stations.map(function () { return new Set(); });
     C.stationTracks = C.stations.map(function () { return new Set(); });
+    C.topo.forEach(function (tp, lid) {
+      if (!tp || !tp.routes) return;
+      for (const rt of tp.routes) for (const sid of rt.st) {
+        const si = C.sIndex.get(sid); if (si != null) C.stationTracks[si].add(lid);
+      }
+    });
     for (const r of C.routes) for (const si of r.stIdx) {
-      C.stationTracks[si].add(r.lineId);
-      if (!M.stationOpen(C.stations[si])) continue;
+      if (!M.stationOpen(C.stations[si])) continue;   // 防御：运营路线本就不含停用/预留站
       C.stationRoutes[si].push(r.id); C.stationLines[si].add(r.lineId);
     }
     C.serviced = C.stations.map(function (s, i) { return C.stationRoutes[i].length > 0; });

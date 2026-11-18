@@ -5169,6 +5169,7 @@
     }
     if (!sd || model.dailyStale) return;
     for (let i = 0; i < C.stations.length; i++) {
+      if (!C.serviced[i]) continue;   // v4.8：停用站 / 预留站视为不存在，不计入服务缺口与超载提示
       const ratio = (sd.peak[i] || 0) / CFG.metro.stationCap[C.stations[i].size]; if (ratio <= 1) continue;
       const k = DC.sIndex.get(C.stations[i].id); if (k === undefined) continue;
       const sp = this.stPx[k]; if (!sp) continue;

@@ -372,7 +372,7 @@ try {
   assert.equal(drawn.rsvB, false, '未按 Ctrl 的终点应是正式站');
   assert.ok(drawn.seg, '预留站应能与正式站接轨（绘线路径）');
   assert.equal(drawn.servA, false, '接轨的预留站仍不服务（没有站台）');
-  assert.equal(drawn.servB, true, '同一段轨道上的正式站应正常服务');
+  assert.equal(drawn.servB, false, '只有一座可停靠站的线路还不能运营（v4.8：预留站视为不存在，至少要两座可停靠站）');
   assert.equal(drawn.tracksA, 1, '预留站应记录 1 条接入线路');
   // 车站页：应显示接入的线路、说明「可先接轨」，并保留从此站绘线的入口
   await E(`CM.ui.select({kind:'station',id:${JSON.stringify(drawn.a)}});true`);

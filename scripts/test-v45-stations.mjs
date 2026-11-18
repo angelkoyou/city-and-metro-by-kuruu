@@ -64,8 +64,9 @@ assert.equal(M.stationLines(net, mid).length, 2, '数据层按区段统计接入
 assert.equal(C1.stationLines[mi].size, 0, '升级前不提供换乘');
 assert.equal(C1.stationRoutes[mi].length, 0, '升级前没有停靠路线');
 assert.equal(C1.serviced[mi], false, '升级前不计客流');
-assert.ok(C1.routes.filter(r => r.stIds.indexOf(mid) >= 0).length >= 2, '两条线的列车都从预留站通过');
-assert.ok(C1.routes.filter(r => r.stIds.indexOf(mid) >= 0).every(r => r.nStops === r.stIds.length - 1), '停靠站数排除预留站');
+// v4.8：停用站与预留站视为不存在，不再出现在运营路线的停靠站表里（v4.6 之前是「留在表里、到站通过」）
+assert.ok(C1.routes.every(r => r.stIds.indexOf(mid) < 0), '预留站不进运营路线的停靠站表');
+assert.ok(C1.routes.every(r => r.nStops === r.stIds.length), '停靠站数只统计可停靠站');
 console.log('PASS 2 预留站多线连接 / 升级前无换乘无客流');
 
 // ================= 3. 升级为正式站：自动按正式规则启用换乘与客流 =================
@@ -75,7 +76,7 @@ assert.equal(C2.stationLines[m2].size, 2, '升级后成为换乘站');
 assert.ok(C2.stationRoutes[m2].length >= 2, '升级后两条线都停靠');
 assert.equal(C2.serviced[m2], true, '升级后参与客流计算');
 assert.equal(C2.stationTracks[m2].size, 2, '结构接入不变');
-assert.ok(C2.routes.filter(r => r.stIds.indexOf(mid) >= 0).every(r => r.nStops === r.stIds.length), '升级后按正式站计停靠数');
+assert.ok(C2.routes.some(r => r.stIds.indexOf(mid) >= 0) && C2.routes.every(r => r.nStops === r.stIds.length), '升级后重新成为停靠站，停靠数按正式站计');
 console.log('PASS 3 升级为正式站后自动按正式站规则启用换乘与客流');
 
 // ================= 4. 停用：停运、不计客流、不提供换乘、不算运营费 =================
@@ -85,7 +86,7 @@ assert.equal(C3.stationLines[m3].size, 0, '停用后不再提供换乘');
 assert.equal(C3.stationRoutes[m3].length, 0, '停用后没有停靠路线');
 assert.equal(C3.serviced[m3], false, '停用后不计客流');
 assert.equal(C3.stationTracks[m3].size, 2, '停用只是运营开关，轨道结构仍接入（可随时恢复）');
-assert.ok(C3.routes.filter(r => r.stIds.indexOf(mid) >= 0).every(r => r.nStops === r.stIds.length - 1), '停用站通过不停靠');
+assert.ok(C3.routes.every(r => r.stIds.indexOf(mid) < 0), '停用站视为不存在：不进运营路线的停靠站表');
 assert.equal(M.stationUpkeepFactor(net.stations[mid]), 0, '停用站不再支付日常运营费');
 assert.equal(M.stationUpkeepFactor(net.stations[a]), 1, '启用站按原价支付');
 net.stations[mid].rsv = 1;

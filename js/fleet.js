@@ -306,6 +306,9 @@
     if (t.svc) {
       for (const r of rs) { const s = C.routes[r].stIds; if (!C.routes[r].svc && s[s.length - 1] === t.svc) return { r: r, d: 0 }; }
       for (const r of rs) if (!C.routes[r].svc && C.routes[r].stIds.indexOf(t.svc) >= 0) return { r: r, d: 0 };
+      // v4.8：终点站被停用后折返点前移到上一个可停靠站——原来以该站为终点的列车自动归到这条全程交路，
+      // 不会因为站名从路线站点表里消失就被退回车辆段。
+      for (const r of rs) { const rt = C.routes[r]; if (!rt.svc && rt.closedEnds && rt.closedEnds.indexOf(t.svc) >= 0) return { r: r, d: 0 }; }
       return null;
     }
     return { r: rs[0], d: 0 };
@@ -1171,7 +1174,9 @@
   // 新增或编辑运行交路：选类型、区间与停靠站，预览用时后保存
   UI.prototype.showServiceEditor = function (lid, id) {
     const g = this.g(), self = this, MM = CM.Metro, C = g.compiled, net = g.net, L = net.lines[lid], tp = C.topo.get(lid);
-    const bases = C.routes.filter(function (r) { return r.lineId === lid && !r.svc; });
+    // v4.8：交路编辑以「完整基准路线」（C.bases）为坐标系，站序与 svcStops/patternRoute 的索引一致；
+    // 停用站与预留站由下面的 stationOpen 过滤掉，不进入起讫站下拉与停靠站 chip。
+    const bases = (C.bases && C.bases[lid]) || C.routes.filter(function (r) { return r.lineId === lid && !r.svc; });
     if (!L || !tp || !bases.length) { this.toast('线路运营后才能设置交路', 'bad'); return; }
     const old = id ? (L.svcs || []).find(function (x) { return x.id === id; }) : null, loop = tp.topo === 'loop', box = h('div');
     // v4.6：站点停靠选择只列「正在运营」的站——预留站与已关闭运营的站不设站台，既不显示也不能被选为起讫站
