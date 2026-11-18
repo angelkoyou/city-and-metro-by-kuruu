@@ -3858,3 +3858,16 @@ body.ops-open #feed > :not(#toasts) { display: none; }
 .seg-ctl button.off:hover { background: transparent; }
 .seg-ctl button.off.on { background: transparent; box-shadow: none; }
 .size-min-note { margin: 5px 0 0; font-size: 11.5px; line-height: 1.4; color: var(--muted); }
+
+/* ===== v4.2 色号输入：直接填 #RRGGBB / rgb(110,91,168)，打满即生效 ===== */
+/* 浏览器原生取色面板只提供 R/G/B 三个数，色号入口必须独立摆在外面，否则玩家会以为「不能用色号」 */
+.lc-cur-box { display: block; }
+.lc-hexlab { flex: none; font-size: 11.5px; color: var(--muted); letter-spacing: .2px; }
+.lc-hex-note { display: none; margin: 5px 0 0; font-size: 11.5px; line-height: 1.45; color: var(--bad); }
+.lc-hex-note.on { display: block; }
+.to-color .lc-cur-box { display: flex; align-items: center; gap: 8px; }
+.to-color .lc-hexlab { display: none; }
+.to-color .lc-hex { width: 92px; }
+.to-color .lc-hex-note { margin: 0; max-width: 210px; }
+.qpop-colorfoot { display: flex; align-items: center; gap: 6px; margin-top: 7px; }
+.qpop-hex { width: 96px; }

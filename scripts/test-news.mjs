@@ -63,8 +63,8 @@ for (const [v, date, title] of ORIGINAL) {
   assert.equal(n.title, title, 'v' + v + ' 的标题被改动');
   assert.equal(n.items.length, 6, 'v' + v + ' 的条目数被改动');
 }
-// 2.6–4.1 是本次整理补录的版本，必须连续覆盖，不能跳号丢批次
-for (const v of ['2.6', '2.7', '2.8', '2.9', '3.0', '3.1', '3.2', '3.3', '3.4', '3.5', '3.6', '3.7', '3.8', '3.9', '4.0', '4.1']) {
+// 2.6–4.2 是本次整理补录的版本，必须连续覆盖，不能跳号丢批次
+for (const v of ['2.6', '2.7', '2.8', '2.9', '3.0', '3.1', '3.2', '3.3', '3.4', '3.5', '3.6', '3.7', '3.8', '3.9', '4.0', '4.1', '4.2']) {
   assert.ok(NEWS.some(n => n.v === v), '缺少版本公告：v' + v);
 }
 
@@ -81,4 +81,4 @@ for (const n of NEWS) {
 }
 
 console.log('PASS 更新公告：%d 个版本 / 最新 V%s / 旧记录完整 / 英文 %d 条整句', NEWS.length, NEWS[0].v, NEWS.length * 7);
-console.log('ALL PASS v4.1 更新公告累积与词条');
+console.log('ALL PASS v4.2 更新公告累积与词条');

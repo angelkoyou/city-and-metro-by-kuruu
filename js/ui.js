@@ -1222,41 +1222,73 @@
     if (this.topIs(['build']) && !this.g().draft) this.closePanel();
     if (this.multi && this.topIs(['multi'])) this.renderPage(false);   // 切到或切出拆除工具时，多选页随之变为批量拆除或批量修改
   };
-  // 工具选项条：绘线时显示正在绘制的线路（可切换为新线路或支线）、建设方式与新站规模
-  // v3.7：除了取色器，还可以直接输入十六进制颜色代码（#F3D03E / #00629B，三位缩写也支持）
+  // v4.2：色号解析。除 #RRGGBB / RRGGBB / #RGB / #RRGGBBAA，也接受 rgb(110,91,168) 与 110,91,168——
+  // 浏览器自带取色器只给 R/G/B 三个数，玩家常常是从别处把这组数字抄过来，不能只认十六进制。
+  UI.prototype.parseColorCode = function (v) {
+    let s = String(v == null ? '' : v).trim();
+    if (!s) return null;
+    // 中文输入法下常打出全角（＃Ｆ３Ｄ０３Ｅ），先折成半角再解析
+    s = s.replace(/[\uFF01-\uFF5E]/g, function (ch) { return String.fromCharCode(ch.charCodeAt(0) - 0xFEE0); });
+    const rgb = s.match(/^rgba?\(\s*(\d{1,3})\s*[, ]\s*(\d{1,3})\s*[, ]\s*(\d{1,3})/i) || s.match(/^(\d{1,3})\s*[, ]\s*(\d{1,3})\s*[, ]\s*(\d{1,3})$/);
+    if (rgb) {
+      const p = [Number(rgb[1]), Number(rgb[2]), Number(rgb[3])];
+      if (p.some(function (x) { return !(x >= 0 && x <= 255); })) return null;
+      return '#' + p.map(function (x) { return ('0' + x.toString(16)).slice(-2); }).join('');
+    }
+    s = s.replace(/^#/, '');
+    if (/^[0-9a-f]{3,4}$/i.test(s)) s = s.slice(0, 3).split('').map(function (c) { return c + c; }).join('');
+    if (/^[0-9a-f]{8}$/i.test(s)) s = s.slice(0, 6);
+    return /^[0-9a-f]{6}$/i.test(s) ? '#' + s.toLowerCase() : null;
+  };
+  // 工具选项条与线路详情共用的配色控件：色块预览 + 取色器 + 色号输入。
+  // v4.2：色号打满 6 位立即生效（不必回车，也不必去原生取色器里找十六进制），格式不对时标红并说明原因；
+  // 原生取色器弹出的面板本身只给 R/G/B，所以色号入口必须放在外面，不能只依赖它。
   UI.prototype.lineColorInput = function (getColor, onPick, prefix) {
     const self = this, label = prefix || '';
-    const norm = function (v) {
-      // 允许 #F3D03E / F3D03E / #f30 / f30 四种写法，统一输出小写 #rrggbb
-      let s = String(v == null ? '' : v).trim().replace(/^#/, '');
-      if (/^[0-9a-f]{3}$/i.test(s)) s = s[0] + s[0] + s[1] + s[1] + s[2] + s[2];
-      if (!/^[0-9a-f]{6}$/i.test(s)) return null;
-      return '#' + s.toLowerCase();
-    };
-    const choose = function (value) {
-      const c = norm(value);
-      if (self._replacingToolOpts || self._replacingPage || !c) return false;
-      onPick(c); box.syncColor();
+    const now = function () { return String(getColor()).toLowerCase(); };
+    const preview = h('span', { class: 'lc-preview', style: { background: getColor() } });
+    const picker = h('input', { type: 'color', class: 'lc-picker', value: /^#[0-9a-f]{6}$/i.test(now()) ? now() : '#000000',
+      'aria-label': label + '自定义颜色', onchange: function () { applyColor(picker.value.toLowerCase()); } });
+    const hex = h('input', { type: 'text', class: 'lc-hex', maxlength: 20, spellcheck: 'false', 'aria-label': label + '色号',
+      placeholder: '#F3D03E', value: /^#[0-9a-f]{6}$/i.test(now()) ? now() : '',
+      'data-tip': '直接填色号：支持 #F3D03E、F3D03E、#F30 与 rgb(110,91,168)；打满 6 位立即生效，不必回车' });
+    const note = h('div', { class: 'lc-hex-note' }, '色号写法：#F3D03E、F3D03E 或 rgb(110,91,168)，例如 #00629B');
+    const box = h('div', { class: 'lc-cur-box' },
+      h('div', { class: 'lc-cur' }, preview,
+        h('label', { class: 'btn sm lc-custom', 'data-tip': '用取色器选择任意颜色' }, picker, ic('pencil', 14), '自定义'),
+        h('span', { class: 'lc-hexlab' }, '色号'), hex),
+      note);
+    const paint = function (c) { preview.style.background = c; picker.value = c; };
+    const applyColor = function (c) {
+      if (!c) return false;
+      // 面板正在重建时不能直接改（改了也会被新节点覆盖），下一轮再应用，不能让输入静默失效
+      if (self._replacingToolOpts || self._replacingPage) { setTimeout(function () { applyColor(c); }, 40); return true; }
+      onPick(c);
+      paint(now());
       return true;
     };
-    const picker = h('input', { type: 'color', class: 'lc-picker', value: getColor(), 'aria-label': label + '自定义颜色', onchange: function () { choose(picker.value); } });
-    const preview = h('span', { class: 'lc-preview', style: { background: getColor() } });
-    const hex = h('input', { type: 'text', class: 'lc-hex', maxlength: 7, spellcheck: 'false', 'aria-label': label + '颜色代码',
-      placeholder: '#F3D03E', value: /^#[0-9a-f]{6}$/i.test(getColor()) ? getColor() : '' });
-    const applyHex = function () {
-      if (choose(hex.value)) { hex.classList.remove('bad'); hex.blur(); }
-      else hex.classList.add('bad');
-    };
-    hex.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); applyHex(); } });
-    hex.addEventListener('blur', function () { if (hex.value.trim()) applyHex(); });
-    const box = h('div', { class: 'lc-cur' }, preview,
-      h('label', { class: 'btn sm lc-custom', 'data-tip': '用取色器选择任意颜色' }, picker, ic('pencil', 14), '自定义'),
-      hex);
+    function applyHex(commit) {
+      const c = self.parseColorCode(hex.value);
+      if (!c) { hex.classList.add('bad'); note.classList.add('on'); return false; }
+      hex.classList.remove('bad'); note.classList.remove('on');
+      if (commit) hex.value = c;
+      return c === now() ? true : applyColor(c);
+    }
+    hex.addEventListener('keydown', function (e) {
+      if (e.isComposing || e.keyCode === 229) return;      // 中文输入法组字中，回车是选词
+      if (e.key === 'Enter') { e.preventDefault(); if (applyHex(true)) hex.blur(); }
+    });
+    // 边打边生效：凑满一个完整色号（≥6 个字符）就应用，不必再按回车
+    hex.addEventListener('input', function () {
+      if (hex.value.trim().length >= 6 && self.parseColorCode(hex.value)) applyHex(false);
+    });
+    hex.addEventListener('blur', function () { if (hex.value.trim()) applyHex(true); });
     box.syncColor = function () {
-      const c = getColor(); preview.style.background = c;
-      picker.value = /^#[0-9a-f]{6}$/i.test(c) ? c : '#000000';
-      hex.value = /^#[0-9a-f]{6}$/i.test(c) ? c : '';
-      hex.classList.remove('bad');
+      const c = now();
+      paint(c);
+      // 正在输入时不要改写文本框（会把光标顶到末尾、吞掉刚敲的字符）
+      if (document.activeElement !== hex) hex.value = /^#[0-9a-f]{6}$/i.test(c) ? c : '';
+      hex.classList.remove('bad'); note.classList.remove('on');
     };
     return box;
   };
@@ -1524,14 +1556,10 @@
     const colorIn = h('input', { class: 'lnp-color', type: 'color', value: '#607d8b', 'aria-label': '自定义线路颜色',
       oninput: function () { customColor = colorIn.value.toLowerCase(); refresh(); },
       onchange: function () { customColor = colorIn.value.toLowerCase(); refresh(); } });
-    // v3.7：也可以直接输入十六进制代码（#00629B / #F3D03E，#RGB 缩写同样识别）
-    const normHex = function (v) {
-      let s = String(v == null ? '' : v).trim().replace(/^#/, '');
-      if (/^[0-9a-f]{3}$/i.test(s)) s = s[0] + s[0] + s[1] + s[1] + s[2] + s[2];
-      return /^[0-9a-f]{6}$/i.test(s) ? '#' + s.toLowerCase() : null;
-    };
-    const hexIn = h('input', { class: 'lnp-in lnp-hex', type: 'text', maxlength: 7, spellcheck: 'false', placeholder: '#00629B',
-      'aria-label': '线路颜色代码', value: customColor || '',
+    // v3.7 / v4.2：直接填色号，#00629B / 00629B / #069 与 rgb(0,98,155) 都识别
+    const normHex = function (v) { return self.parseColorCode(v); };
+    const hexIn = h('input', { class: 'lnp-in lnp-hex', type: 'text', maxlength: 20, spellcheck: 'false', placeholder: '#00629B',
+      'aria-label': '线路颜色代码', value: customColor || '', 'data-tip': '支持 #00629B、00629B、#069 与 rgb(0,98,155)',
       oninput: function () {
         const c = normHex(hexIn.value);
         if (c) { customColor = c; hexIn.classList.remove('bad'); refresh(); }

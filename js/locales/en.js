@@ -8552,3 +8552,23 @@ Object.assign(window.CM.I18N_EN, {
   "界面把不达标的规模直接置灰、点不动，提示里写明「本线当前运行 N 节编组，至少要X」，不再等确认建设时才弹提示拦人。": "Sizes below the limit are greyed out and cannot be clicked, with a tooltip saying how many cars the line runs and the minimum size, instead of blocking you with a toast when confirming the build.",
   "买卖列车、调动交路、改编组或时段切换后，工具条与车站页的下限立即重算；编组仍超过站台的列车照旧列为「未上线」。": "Buying, selling, reassigning or re-consisting trains, or moving into another time band, recomputes the limit immediately in the toolbar and the station page; trains still longer than the platforms remain listed as Not in service.",
 });
+
+// —— v4.2 线路颜色：直接填色号（十六进制 / RGB） ——
+Object.assign(window.CM.I18N_EN, {
+  "色号": "Color code",
+  "色号写法：#F3D03E、F3D03E 或 rgb(110,91,168)，例如 #00629B": "Color codes: #F3D03E, F3D03E or rgb(110,91,168) - for example #00629B",
+  "直接填色号：支持 #F3D03E、F3D03E、#F30 与 rgb(110,91,168)；打满 6 位立即生效，不必回车": "Type a color code: #F3D03E, F3D03E, #F30 or rgb(110,91,168). Six digits apply instantly, no Enter needed",
+  "直接填色号：#F3D03E、F3D03E、#F30 或 rgb(110,91,168)": "Type a color code: #F3D03E, F3D03E, #F30 or rgb(110,91,168)",
+  "支持 #00629B、00629B、#069 与 rgb(0,98,155)": "Accepts #00629B, 00629B, #069 and rgb(0,98,155)",
+});
+
+// —— v4.2 更新公告 ——
+Object.assign(window.CM.I18N_EN, {
+  "线路上色可以直接填色号": "Line colors accept color codes",
+  "线路详情「线路颜色」和右键配色气泡都多了一个「色号」输入框：拿到 #F3D03E 这样的色值，直接粘进去就能改色。": "Line details (Line color) and the right-click color popover now have a Color code field: paste a value such as #F3D03E to recolor the line.",
+  "打满 6 位立即生效，不必回车；浏览器自带的取色面板只给 R/G/B 三个数，现在不用再去里面找十六进制了。": "Six digits apply instantly, with no Enter needed; the browser's own picker only offers R/G/B, so you no longer have to hunt for a hex field inside it.",
+  "支持多种写法：#RRGGBB、RRGGBB、#RGB 缩写、带透明度的 #RRGGBBAA，以及从设计稿抄来的 rgb(110,91,168) 与 110,91,168。": "Several formats work: #RRGGBB, RRGGBB, the #RGB shorthand, #RRGGBBAA with alpha, and rgb(110,91,168) or 110,91,168 copied from a design file.",
+  "中文输入法打出的全角「＃Ｆ３Ｄ０３Ｅ」也能识别，不必先切换输入法。": "Full-width characters typed with a Chinese input method (＃Ｆ３Ｄ０３Ｅ) are accepted as well, so there is no need to switch input methods first.",
+  "格式不对时输入框标红，并在下面写明正确写法；色号仍会同时写进取色器，两边随时可以互相切换。": "Invalid input turns the field red with the correct format spelled out below it; the code and the picker stay in sync so you can switch between them freely.",
+  "改色依旧免费、立即生效：线路徽标、地图、线网图与运营列表的配色同步刷新，并随存档保存。": "Recoloring stays free and instant: line badges, the map, the network diagram and the operations list all update, and the color is saved with your game.",
+});

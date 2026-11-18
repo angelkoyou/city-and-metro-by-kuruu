@@ -151,7 +151,7 @@
   CM.CFG = {
     // 对外版本号：与 js/news.js 最新一条公告的「主.次」版本一致（verify-game 会校验）。
     // 规则修订号保持不变：存档结构与迁移路径没有变化，不必强制旧档备份。
-    GAME_VERSION: '4.1',
+    GAME_VERSION: '4.2',
     TRAFFIC_MODEL: 4,      // 轻量交通更新；与显示版本独立，确保 v3 存档仍触发安全迁移
     RULES_REVISION: 7,     // 存档升级门槛；版本号独立维护，改动不涉及存档结构时不要抬此值（会强制旧档备份）
     SAVE_FORMAT: 'city-metro-save',

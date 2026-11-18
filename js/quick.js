@@ -207,9 +207,33 @@
     const seen = new Set(), sws = [];
     for (const c of all) { const lc = c.toLowerCase(); if (seen.has(lc)) continue; seen.add(lc); const b = h('button', { class: 'lc-sw', 'aria-label': '线路颜色 ' + c, style: { background: c }, onclick: function () { pick(c); } }); b.dataset.c = lc; sws.push(b); box.appendChild(b); }
     const custom = h('input', { type: 'color', class: 'lc-picker', value: /^#[0-9a-f]{6}$/i.test(L.color) ? L.color : '#000000', 'aria-label': '自定义颜色', onchange: function () { const c = custom.value.toLowerCase(); const rc = (CM.Settings.get('recentColors') || []).filter(function (x) { return x !== c; }); rc.unshift(c); CM.Settings.set('recentColors', rc.slice(0, 8)); pick(c); } });
-    const mark = function () { const c = String((net().lines[lid] || L).color).toLowerCase(); for (const b of sws) b.classList.toggle('on', b.dataset.c === c); };
+    // v4.2：原生取色面板只给 R/G/B，这里补一个色号输入（打满 6 位立即改色，也收 rgb(110,91,168)）
+    const hexIn = h('input', { type: 'text', class: 'lc-hex qpop-hex', maxlength: 20, spellcheck: 'false', placeholder: '#F3D03E', 'aria-label': '色号',
+      value: /^#[0-9a-f]{6}$/i.test(L.color) ? L.color.toLowerCase() : '',
+      'data-tip': '直接填色号：#F3D03E、F3D03E、#F30 或 rgb(110,91,168)',
+      oninput: function () {
+        const c = ui.parseColorCode(hexIn.value);
+        if (c && hexIn.value.trim().length >= 6) { hexIn.classList.remove('bad'); pick(c); }
+      },
+      onkeydown: function (e) { if (e.key === 'Enter') { e.preventDefault(); applyHex(); } },
+      onblur: function () { if (hexIn.value.trim()) applyHex(); } });
+    const applyHex = function () {
+      const c = ui.parseColorCode(hexIn.value);
+      if (!c) { hexIn.classList.add('bad'); return; }
+      hexIn.classList.remove('bad'); hexIn.value = c;
+      const rc = (CM.Settings.get('recentColors') || []).filter(function (x) { return x !== c; }); rc.unshift(c); CM.Settings.set('recentColors', rc.slice(0, 8));
+      pick(c);
+    };
+    const mark = function () {
+      const c = String((net().lines[lid] || L).color).toLowerCase();
+      for (const b of sws) b.classList.toggle('on', b.dataset.c === c);
+      if (document.activeElement !== hexIn) hexIn.value = /^#[0-9a-f]{6}$/i.test(c) ? c : '';
+    };
     mark();
-    openPop(anchor, L.name + ' 的颜色', h('div', null, box, h('label', { class: 'btn sm lc-custom', style: { marginTop: '6px' } }, custom, ic('pencil', 14), '自定义')));
+    openPop(anchor, L.name + ' 的颜色', h('div', null, box,
+      h('div', { class: 'qpop-colorfoot' },
+        h('label', { class: 'btn sm lc-custom' }, custom, ic('pencil', 14), '自定义'),
+        h('span', { class: 'lc-hexlab' }, '色号'), hexIn)));
   }
   // 商业开发与车站装修气泡：与车站详情页共用控件，操作后原地刷新
   function popPanel(id, anchor, title, build) {
