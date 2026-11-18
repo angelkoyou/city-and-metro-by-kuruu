@@ -305,7 +305,11 @@
     const P = g.corp, t = P && P.tenders.find(function (x) { return x.id === id; }); if (!t || t.bid) return { error: '招标已结束' };
     if (P.contracts.length + P.tenders.filter(function (x) { return !!x.bid; }).length >= RULE.active) return { error: '履约和待评标的项目合计最多 ' + RULE.active + ' 个' };
     const o = t.opts.find(function (x) { return x.key === key; }); if (!o) return { error: '方案不存在' };
-    if (g.econ.funds < o.bond + o.land) return { error: '一般资金不足以支付履约保证金' + (o.land ? '与地价' : '') + '（' + U.fmtMoney(o.bond + o.land) + '）' };
+    // v4.3：保证金与地价走「一般资金」。无限贷款（含自由建造）下与建设、买车一致——允许透支，
+    // 资金为负或余额不足都不再拦投标；普通模式仍在投标时校验余额，不足即阻断（提示与支付失败处理不变）。
+    // 旧方案没有 land 字段，必须按 0 补齐：直接相加会得到 NaN，让普通模式的余额校验整条失效。
+    const outlay = o.bond + (o.land || 0);
+    if (!g.econ.canAfford(outlay)) return { error: '一般资金不足以支付履约保证金' + (o.land ? '与地价' : '') + '（' + U.fmtMoney(outlay) + '）' };
     t.bid = { opt: key, ym: g.ym(), p: Corp.winChance(o, P.rating) };
     g.logEvent({ tag: '合同', title: '投标：' + t.title, desc: o.name + '，中标概率约 ' + U.fmtPct(t.bid.p, 0) + '，下月初公布结果。' });
     return { ok: true, t: t };
@@ -462,7 +466,9 @@
             o.propM ? h('div', null, '物业收益约 ', h('b', null, U.fmtMoney(o.propM)), ' / 月，持有成本 ', h('b', null, U.fmtMoney(o.holdM))) : null,
             h('div', { class: 'muted' }, '政府支付合计 ' + U.fmtMoney(gov) + '（投资的 ' + Math.round(gov / Math.max(1, t.est) * 100) + '%）'),
             h('div', { class: 'muted' }, riskText(o)),
-            h('div', { class: 'muted' }, '保证金 ' + U.fmtMoney(o.bond) + (o.land ? ' · 地价 ' + U.fmtMoney(o.land) : ''))),
+            h('div', { class: 'muted' }, '保证金 ' + U.fmtMoney(o.bond) + (o.land ? ' · 地价 ' + U.fmtMoney(o.land) : '')),
+            // v4.3：无限贷款 / 自由建造下保证金允许透支，先说清楚，避免看到负余额以为不能投标
+            g.econ.isSandbox() ? h('div', { class: 'muted' }, '无限贷款：可透支支付，余额不足或为负也能投标') : null),
           t.bid ? (mine ? h('span', { class: 'tag good' }, '已投标 · 下月初公布') : null)
             : h('button', { class: 'btn sm' + (o.key === 'std' ? ' primary' : ''), onclick: function () { const r = Corp.bid(g, t.id, o.key); if (r.error) self.toast(r.error, 'bad'); else { if (CM.Sound) CM.Sound.play('contract'); self.toast('已投标「' + t.title + '」：' + o.name + '，下月初公布结果', 'good'); done(); } } }, '按此投标')));
       }

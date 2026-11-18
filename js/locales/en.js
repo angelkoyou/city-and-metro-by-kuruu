@@ -8572,3 +8572,19 @@ Object.assign(window.CM.I18N_EN, {
   "格式不对时输入框标红，并在下面写明正确写法；色号仍会同时写进取色器，两边随时可以互相切换。": "Invalid input turns the field red with the correct format spelled out below it; the code and the picker stay in sync so you can switch between them freely.",
   "改色依旧免费、立即生效：线路徽标、地图、线网图与运营列表的配色同步刷新，并随存档保存。": "Recoloring stays free and instant: line badges, the map, the network diagram and the operations list all update, and the color is saved with your game.",
 });
+
+// —— v4.3 无限贷款下的投标保证金（可透支支付） ——
+Object.assign(window.CM.I18N_EN, {
+  "无限贷款：可透支支付，余额不足或为负也能投标": "Infinite loan: the bond may be paid by overdraft, so you can bid with insufficient or negative funds",
+});
+
+// —— v4.3 更新公告 ——
+Object.assign(window.CM.I18N_EN, {
+  "无限贷款下投标不再被保证金拦住": "Bidding is no longer blocked by the bond under infinite loan",
+  "开启无限贷款后，投标保证金与「铁路＋物业」的地价都可以透支支付：账户余额不足、甚至已经是负数，也照样能投标。": "With infinite loan on, bid bonds and the land premium on rail-plus-property bids may be paid by overdraft: you can still bid with insufficient funds or even a negative balance.",
+  "普通模式完全不变：投标时仍按一般资金校验，钱不够就提示「一般资金不足以支付履约保证金」，投标不成立、也不会扣费。": "Normal mode is unchanged: bids are still checked against general funds, and a shortfall shows the usual message without placing the bid or charging anything.",
+  "中标后扣款方式不变：签约时从一般资金支付保证金（与地价），透支时余额变负；后续建设、买车与还款照旧共用同一笔一般资金。": "Winning still charges the bond (and land premium) from general funds at signing, so the balance can go negative; construction, train purchases and repayments keep drawing on that same general fund.",
+  "顺带修好一处旧校验：没有地价字段的招标（新线 PPP、扩容改造 PPP）此前因空值比较失效，普通模式下不看保证金也放行；现在会真正按保证金校验。": "An old check is fixed as well: bids without a land premium (new-line PPP and capacity-upgrade PPP) used to skip the funds check because of an empty value, letting normal mode bid regardless of the bond; the bond is now really checked.",
+  "合同页在无限贷款下会注明「可透支支付」，看到负余额时不用再猜能不能投标；关掉开关后立刻恢复普通模式的校验。": "The contract page notes that the bond can be paid by overdraft while infinite loan is on, so a negative balance no longer leaves you guessing; switching it off restores the normal check at once.",
+  "其余规则不动：同时最多承接 5 个合同与待评标项目、投标后下月初公布结果、违约仍扣保证金，这些限制不会因无限贷款放宽。": "Other rules are unchanged: at most five contracts and pending bids at once, results published early next month, and the bond still forfeited on default - infinite loan does not relax any of them.",
+});
