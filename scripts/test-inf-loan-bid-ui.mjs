@@ -117,6 +117,8 @@ try {
   assert.equal(view.short, true, '测试前提是负余额');
   assert.equal(view.btns, 3, '每个方案都应有「按此投标」按钮');
   assert.deepEqual(view.disabled, [false, false, false], '无限贷款下按钮不得置灰');
+  await E('(()=>{const c=[...document.querySelectorAll(".pp-tender")][0];c.scrollIntoView({block:"end"});return true})()');
+  await delay(300);
   await shot('v43-inf-loan-bid');
 
   await E(`(()=>{const c=document.querySelector(".pp-tender");const b=[...c.querySelectorAll("button")].find(x=>x.textContent.trim()==="按此投标");b.click();return true})()`);
@@ -140,14 +142,27 @@ try {
   assert.equal(blocked.bid, false, '普通模式余额不足时不应产生投标');
   assert.match(String(blocked.toast), /一般资金不足以支付履约保证金/, '普通模式应提示余额不足：' + blocked.toast);
 
-  // ---------------- 3. 英文界面：说明整句译完，不漏汉字 ----------------
+  // ---------------- 3. 英文界面：说明整句译完，不漏汉字；余额不足提示不粘词 ----------------
   await E('CM.I18n.apply("en");true');
   await delay(400);
-  const en = await E(`(()=>{const g=CM.game;g.econ.setInfLoan(true);g.econ.funds=-500000;g.touch();CM.ui.rerenderPage();return true})()`);
+  // 先看普通模式的英文提示（拼接句「…performance bond」+「and land premium」+「(金额)」）
+  await E('CM.ui.toasts.replaceChildren();true');
+  await E(`(()=>{const g=CM.game;g.econ.setInfLoan(false);g.econ.funds=-100;g.touch();CM.ui.rerenderPage();return true})()`);
+  await delay(400);
+  await E(`(()=>{const c=[...document.querySelectorAll(".pp-tender")][1];const b=[...c.querySelectorAll("button")].find(x=>/^(按此投标|Bid)$/.test(x.textContent.trim()));b.click();return true})()`);
+  await delay(500);
+  const enToast = await E('CM.ui.toasts.textContent');
+  assert.match(String(enToast), /Insufficient general funds for the performance bond and land premium/, '英文提示应说明保证金与地价：' + enToast);
+  assert.ok(!/bondand|premiumand/i.test(String(enToast)), '英文拼接不得粘词：' + enToast);
+
+  // 再看无限贷款下的说明
+  await E(`(()=>{const g=CM.game;g.econ.setInfLoan(true);g.econ.funds=-500000;CM.ui.toasts.replaceChildren();g.touch();CM.ui.rerenderPage();return true})()`);
   await delay(500);
   const enView = await E(`(()=>{const c=[...document.querySelectorAll(".pp-tender")][1];const m=String(c.textContent).match(/Infinite loan[^\\n]*/);return {line:m?m[0]:"",han:/[\\u3400-\\u9fff]/.test((m?m[0]:""))}})()`);
   assert.ok(enView.line.length > 20, '英文界面应显示无限贷款的说明：' + JSON.stringify(enView));
   assert.equal(enView.han, false, '说明译文不得残留汉字：' + enView.line);
+  await E('(()=>{const c=[...document.querySelectorAll(".pp-tender")][1];c.scrollIntoView({block:"end"});return true})()');
+  await delay(300);
   await shot('v43-inf-loan-bid-en');
 
   await E('CM.I18n.apply("zh-CN");true');

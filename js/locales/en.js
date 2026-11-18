@@ -8576,6 +8576,8 @@ Object.assign(window.CM.I18N_EN, {
 // —— v4.3 无限贷款下的投标保证金（可透支支付） ——
 Object.assign(window.CM.I18N_EN, {
   "无限贷款：可透支支付，余额不足或为负也能投标": "Infinite loan: the bond may be paid by overdraft, so you can bid with insufficient or negative funds",
+  // 提示句是拼接出来的：「…履约保证金」+「与地价」+「（金额）」，这条必须带前导空格，否则英文会粘成 bondand
+  "与地价": " and land premium",
 });
 
 // —— v4.3 更新公告 ——
