@@ -70,12 +70,15 @@
     for (const s of info) {
       let short = Math.max(0, s.peakNeed - s.avail); if (short <= 0) continue;
       const use = [];
-      for (let i = idle.length - 1; i >= 0 && short > 0; i--) { const t = idle[i], need = s.rt.kmh > 80 ? s.rt.kmh : 0; if (t.cars <= s.rt.cars && F.model(t.model).kmh >= need) { use.push(t.id); idle.splice(i, 1); short--; } }
+      for (let i = idle.length - 1; i >= 0 && short > 0; i--) { const t = idle[i], need = s.rt.kmh > 80 ? s.rt.kmh : 0; if (F.canAutoPick(g, F.model(t.model)) && t.cars <= s.rt.cars && F.model(t.model).kmh >= need) { use.push(t.id); idle.splice(i, 1); short--; } }
       if (use.length) { steps.push({ type: 'move', ids: use, line: lid, svc: s.id }); moved += use.length; }
       if (short > 0) {
-        const m = F.recommend(g.mapId, y, s.rt.kmh), cars = Math.min(s.rt.cars, m.max), each = F.price(g, m, cars, y);
-        steps.push({ type: 'buy', line: lid, svc: s.id, model: m.id, cars: cars, n: short, name: F.shortOf(m) });
-        cost += each * short; bought += short;
+        const m = F.recommend(g.mapId, y, s.rt.kmh);
+        if (m) {   // v4.4：主干没有能跑这条速度的车型时不自动购买，留给玩家在购车窗口手动选购
+          const cars = Math.min(s.rt.cars, m.max), each = F.price(g, m, cars, y);
+          steps.push({ type: 'buy', line: lid, svc: s.id, model: m.id, cars: cars, n: short, name: F.shortOf(m) });
+          cost += each * short; bought += short;
+        }
       }
     }
     if (moved) parts.push('调入闲置列车 ' + moved + ' 列');

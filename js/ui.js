@@ -2753,7 +2753,7 @@
       const net = g.draft ? g.draft.net : g.net, out = [];
       for (const id in net.stations) {
         const s = net.stations[id], ls = M.stationLines(net, id).map(function (l) { return net.lines[l]; }).filter(Boolean);
-        out.push({ kind: 'stations', id: id, name: s.name, sub: s.rsv ? '预留站 · 可接轨、不停靠（可补建为正式站）' : (ls.length ? ls.map(function (l) { return l.name; }).join('、') + (ls.length > 1 ? ' · 换乘站' : '') : '未接入线路'), color: ls[0] ? AX.line(ls[0]) : null, x: s.x, y: s.y, st: true });
+        out.push({ kind: 'stations', id: id, name: s.name, sub: s.rsv ? '预留站 · 可接轨、不停靠（可补建为正式站）' : (s.off ? '已停用 · 不停靠、不计客流与运营费' : (ls.length ? ls.map(function (l) { return l.name; }).join('、') + (ls.length > 1 ? ' · 换乘站' : '') : '未接入线路')), color: ls[0] ? AX.line(ls[0]) : null, x: s.x, y: s.y, st: true });
         if (favs.stations.indexOf(id) >= 0) favs.names[id] = s.name;
       }
       for (const id in net.lines) {

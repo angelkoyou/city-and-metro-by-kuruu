@@ -1165,8 +1165,8 @@
       if ((k & 31) === 31) yield;
       const st = C.stations[k];
       trees.push(null);
-      // 预留站（v2.8.2）：没有出入口与站台，不提供步行接驳覆盖，也不参与换乘
-      if (st.rsv) continue;
+      // 预留站（v2.8.2）与停用站（v4.5）都没有出入口与站台，不提供步行接驳覆盖，也不参与换乘
+      if (!CM.Metro.stationOpen(st)) continue;
       const c0 = city.cellAt(st.x, st.y);
       if (c0 < 0) continue;
       const ci = c0 % city.W, cj = (c0 / city.W) | 0;
@@ -1229,9 +1229,9 @@
           const e = m.get(k) || [0, 0]; e[0] += w; e[1] += w * cd; m.set(k, e);
         }
       }
-      // 手动指定的换乘关系（没有任何指定时跳过整轮车站对比较）。预留站不能作为换乘站。
+      // 手动指定的换乘关系（没有任何指定时跳过整轮车站对比较）。预留站与停用站不能作为换乘站。
       for (let m2 = 0; xrAny && m2 < N; m2++) {
-        if (m2 === k || (C.serviced && !C.serviced[m2]) || C.stations[m2].rsv) continue;
+        if (m2 === k || (C.serviced && !C.serviced[m2]) || !CM.Metro.stationOpen(C.stations[m2])) continue;
         const s2 = C.stations[m2];
         if (U.dist(st.x, st.y, s2.x, s2.y) * CFG.CELL_M > xferM + 150) continue;
         const c2 = city.cellAt(s2.x, s2.y); if (c2 < 0) continue;
@@ -1337,9 +1337,9 @@
       const rt = C.routes[r], n = rt.stIdx.length;
       const be = new Int32Array(n);
       for (let k = 0; k < n; k++) {
-        // 预留站（v2.8.3）：可以接轨、列车也从这里通过，但没有站台，不能上下客。
+        // 预留站（v2.8.3）与停用站（v4.5）：可以接轨、列车也从这里通过，但没有站台，不能上下客。
         // 上下客边给一个足够大的时间，任何路径都不会选它；通过边照常保留，线网仍然连通。
-        const shut = C.stations[rt.stIdx[k]].rsv ? 1e6 : 0;
+        const shut = CM.Metro.stationOpen(C.stations[rt.stIdx[k]]) ? 0 : 1e6;
         // 天地换乘车站的非主站台层：上下车各多走一段垂直通道（其余车站为 0，与原模型相同）
         const lv = rt.lvPen && rt.lvPen[k] ? mc.levelXferMin : 0;
         be[k] = push(rt.stIdx[k], platBase[r] + k, 0, r, k, 0, rt.stIdx[k], 0, shut || lv, 0);

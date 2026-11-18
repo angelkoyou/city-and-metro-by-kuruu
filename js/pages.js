@@ -272,7 +272,7 @@
   };
   UI.prototype.todBody = function (id, after) {
     const g = this.g(), self = this, T = CM.TOD, I = this.todInfo(id), free = g.econ.isFree();
-    if (!I) return h('div', { class: 'note' }, '车站接入运营线路后才能开发商业空间。');
+    if (!I) return h('div', { class: 'note' }, M.stationOff(g.net.stations[id]) ? '这座车站已停用，停止运营期间不能开发或升级商业空间。' : '车站接入运营线路后才能开发商业空间。');
     const s = I.s, lv = I.lv, b = h('div'), lines = M.stationLines(g.net, id).map(function (l) { return g.net.lines[l]; }).filter(Boolean);
     // 预览：左边是现在，右边是开发后；鼠标移到某一级上时右边换成那一级
     const nextBox = h('div', { class: 'st-artbox' }), nextCap = h('figcaption');
@@ -412,10 +412,30 @@
     const desc = function (x, n, sid) { return CFG.metro.sizeName[x.size] + ' · ' + (x.lv ? M.levelsText(M.stationLevels(n, sid || id)) : CFG.metro.typeName[x.type]); };
     const lines = lineIds.map(function (l) { return net.lines[l]; }).filter(Boolean);
     // 预留站（v2.8.3）：只征地、不设站台（但可以接轨），因此没有客流概况页可看
-    const isRsv = !!repSt.rsv;
+    const isRsv = !!repSt.rsv, isOff = M.stationOff(official || s);
     el.appendChild(h('div', { class: 'row', style: { flexWrap: 'wrap', marginBottom: '8px' } },
       isRsv ? h('span', { class: 'tag warn' }, '预留站 · 不设站台') : null,
-      lines.length ? lines.map(function (l) { return h('span', { class: 'tag', style: { background: AX.line(l) + '22', color: AX.line(l) } }, '● ' + l.name); }) : h('span', { class: 'tag' }, '未接入线路'), (lines.length > 1 || isGroup) ? h('span', { class: 'tag xfer' }, repSt.lv ? '⇄ 天地换乘' : '⇄ 换乘站') : null, h('span', { class: 'tag' }, desc(repSt, net, rep)), isGroup ? h('span', { class: 'tag info' }, '共 ' + grp.length + ' 座站台') : null, !official ? h('span', { class: 'tag info' }, '草案中（未建成）') : null, h('span', { class: 'grow' }), this.favBtn('stations', id)));
+      isOff ? h('span', { class: 'tag bad' }, '已停用 · 不停靠') : null,
+      lines.length ? lines.map(function (l) { return h('span', { class: 'tag', style: { background: AX.line(l) + '22', color: AX.line(l) } }, '● ' + l.name); }) : h('span', { class: 'tag' }, '未接入线路'),
+      // 预留站可以多线接轨表示未来换乘站，但升级前不得提供换乘功能
+      (lines.length > 1 || isGroup) ? h('span', { class: 'tag xfer' }, isRsv ? '⇄ 预留换乘 · 补建后启用' : (repSt.lv ? '⇄ 天地换乘' : '⇄ 换乘站')) : null,
+      h('span', { class: 'tag' }, desc(repSt, net, rep)), isGroup ? h('span', { class: 'tag info' }, '共 ' + grp.length + ' 座站台') : null, !official ? h('span', { class: 'tag info' }, '草案中（未建成）') : null, h('span', { class: 'grow' }), this.favBtn('stations', id)));
+    // v4.5 车站「是否启用」开关：默认启用；停用后本站停运、不计客流与换乘、不收运营费，轨道保留以便随时恢复
+    if (official && !isRsv) {
+      const on = !M.stationOff(official);
+      el.appendChild(h('div', { class: 'fo-auto st-onoff' + (on ? '' : ' off') },
+        h('span', { class: 'grow' },
+          h('b', null, on ? '车站运营中' : '车站已停用'),
+          h('small', null, on
+            ? '本站正常停靠、计入客流与换乘，并按站厅规模支付日常运营费。'
+            : '本站停止运营：列车通过不停靠，不计客流、不提供换乘，也不再支付日常运营费。')),
+        h('button', { class: 'btn sm' + (on ? '' : ' primary'), 'data-tip': on ? '停用后轨道保留，随时可以恢复运营' : '恢复运营后本站重新停靠，并按正式站规则启用换乘与客流', onclick: function () {
+          const want = !on, r = g.setStationEnabled(id, want);
+          if (r && r.error) { self.toast(r.error, 'bad'); return; }
+          self.markUnsaved(); self.scheduleAutosave(); self.rerenderPage();
+          self.toast((want ? '已停用「{a}」：列车通过不停靠，本站不再计客流与运营费' : '「{a}」已恢复运营').replace('{a}', s.name), 'good');
+        } }, on ? '停用本站' : '恢复运营')));
+    }
     // 分页（v2.1 第二轮）：「概况」只看客流与服务，「建设」集中规模、站台、方向、绘线与拆除；名称点标题修改。
     // 草案中的新站与预留站只有建设页
     const tab = (!official || isRsv) ? 'build' : ((this._tab && this._tab.station) || 'info');
@@ -614,7 +634,9 @@
       el.appendChild(this.todBlock(id));
       el.appendChild(this.decorBlock(id));
     } else if (official && k !== undefined) {
-      el.appendChild(this.callout('warn', 'warn', '该车站尚未接入运营线路，不提供服务：不计入地铁覆盖，也不产生客流和票款。把它连接到线路并确认建设后生效。'));
+      el.appendChild(this.callout('warn', 'warn', isOff
+        ? '这座车站已停用：列车通过不停靠，不计入地铁覆盖与客流，不产生票款，也不再支付日常运营费。在上方打开「是否启用」即可恢复。'
+        : '该车站尚未接入运营线路，不提供服务：不计入地铁覆盖，也不产生客流和票款。把它连接到线路并确认建设后生效。'));
       el.appendChild(this.sec('st-cover', '潜在步行覆盖（接入线路后）', '', function () { return self.coverBlock(s, k, true); }));
     } else if (official) {
       el.appendChild(h('div', { class: 'note' }, '客流数据计算中…'));
@@ -636,6 +658,7 @@
       b.appendChild(h('div', { class: 'callout info rsv-box' },
         h('div', { class: 'grow' },
           h('div', { class: 'ct' }, '预留站：已完成征地与预留结构（本站已付 ' + U.fmtMoney(paid) + '），还没有站台。建筑费与维护费按正式站的 1/5 计；可以接轨，但列车通过不停靠，不计客流、不能换乘。'),
+          h('div', { class: 'ct' }, '预留站可以被多条线路接轨来表示未来换乘站；补建为正式站后，自动按正式站规则启用换乘与客流计算。'),
           h('div', { class: 'row', style: { flexWrap: 'wrap', gap: '6px', marginTop: '6px', alignItems: 'flex-start' } },
             h('span', { class: 'tiny muted', style: { flex: '1 1 240px', minWidth: '0' } }, '补建为正式站需补交 ' + U.fmtMoney(pay) + '（正式站 ' + U.fmtMoney(full) + ' − 已付 ' + U.fmtMoney(paid) + '，不加价；拆迁与保护费已按正式站标准付过，不重复收取）'),
             h('button', { class: 'btn sm primary', style: { flex: '0 0 auto' }, onclick: function () {
@@ -704,6 +727,7 @@
       acts.appendChild(h('button', { class: 'btn sm', onclick: function () { self.startDraw(id, 'new'); } }, '新建线路'));
       b.appendChild(h('div', { class: 'field' }, h('label', null, '从此站绘线'),
         s.rsv ? h('div', { class: 'note' }, '预留站可以先接轨，把线位占住；列车通过不停靠，补建为正式站后自动开始停靠接客。') : null,
+        s.rsv ? h('div', { class: 'note' }, '同一座预留站可以被多条线路连接，用来表示未来的换乘站；升级前不提供换乘功能，也不参与客流计算。') : null,
         acts));
     }
     b.appendChild(h('div', { class: 'row', style: { marginTop: '8px' } },

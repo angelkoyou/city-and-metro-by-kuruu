@@ -1000,6 +1000,18 @@
     else for (const id in net.segments) { const s = net.segments[id]; if (s.a === sid || s.b === sid) set.add(s.line); }
     return Array.from(set);
   };
+  // ---------------- v4.5 车站运营开关与「是否对外服务」的统一入口 ----------------
+  // off=1 表示玩家停用该站：轨道结构保持接入（stationTracks 仍在），但站台停运——
+  // 列车通过不停靠、不计客流、不提供换乘，也不再支付日常运营费。
+  // 旧存档没有 off 字段即默认启用；预留站在补建为正式站前一律不算启用。
+  // 编译、交通求解、经济结算与界面都调用 M.stationOpen，避免规则分散导致行为不一致。
+  M.stationOff = function (s) { return !!(s && s.off); };
+  M.stationOpen = function (s) { return !!s && !s.rsv && !M.stationOff(s); };
+  M.setStationEnabled = function (n, sid, on) {
+    const st = n && n.stations && n.stations[sid]; if (!st) return null;
+    if (on) delete st.off; else st.off = 1;
+    return st;
+  };
 
   // 车站命名
   M.suggestName = function (net, x, y, city) {
@@ -1093,7 +1105,7 @@
     let runSec = 0; for (const t of legSec) runSec += t;
     return {
       id: 0, lineId: B.lineId, line: line, color: line.color, label: M.svcLabel(line, sv), loop: loop, branch: false, main: false, svc: sv.id, baseId: B.id, skipped: (loop ? B.stIds.length : plan.ib - plan.ia + 1) - n,
-      nStops: stIds.filter(function (sid) { return !C.net.stations[sid].rsv; }).length,   // 实际停靠站数（预留站通过不停）
+      nStops: stIds.filter(function (sid) { return M.stationOpen(C.net.stations[sid]); }).length,   // 实际停靠站数（预留站与停用站通过不停）
       lvPen: stops.map(function (i) { return B.lvPen[i]; }), stIds: stIds, stIdx: stIdx, segRefs: legSeg, legSegs: legSegs, pts: pts, hs: hs, cum: cum, stopDist: stopDist, stopPt: stopPt, legLenM: legLenM, legSec: legSec, legV: B.legV,
       cars: minCars, cap: minCars * mc.carCap, runSec: runSec, cycleSec: loop ? runSec + mc.dwell * n : 2 * runSec + 2 * mc.dwell * Math.max(0, n - 2) + 2 * mc.turnaround, lenM: cum[cum.length - 1] * CFG.CELL_M, kmh: B.kmh, opsK: B.opsK,
     };
@@ -1161,7 +1173,7 @@
         const route = {
           id: C.routes.length, lineId: lid, line: line, color: line.color, label: label, loop: rt.loop, branch: tp.topo === 'branch', main: tp.main != null && rt.st[rt.st.length - 1] === tp.main, lvPen: lvPen,
           stIds: rt.st, stIdx: stIdx, segRefs: legSeg, legSegs: legSeg.map(function (ref) { return [ref]; }), pts: pts, hs: hs, cum: cum, stopDist: stopDist, stopPt: stopPt, legLenM: legLenM, legSec: legSec, legV: legV,
-          nStops: rt.st.filter(function (sid) { return !net.stations[sid].rsv; }).length,   // 实际停靠站数（预留站通过不停）
+          nStops: rt.st.filter(function (sid) { return M.stationOpen(net.stations[sid]); }).length,   // 实际停靠站数（预留站与停用站通过不停）
           cars: minCars, cap: minCars * mc.carCap, runSec: runSec, cycleSec: cycleSec, lenM: cum[cum.length - 1] * CFG.CELL_M, kmh: grade.kmh, opsK: grade.ops,
         };
         C.routes.push(route); bases.push(route);
@@ -1172,14 +1184,16 @@
         if (plan && bases[plan.ri]) { const r = M.patternRoute(C, line, bases[plan.ri], sv, plan); r.id = C.routes.length; C.routes.push(r); }
       }
     }
-    // 车站服务线路（v2.8.3）：预留站可以接轨，所以它的线路计入 stationTracks（结构接入，供界面显示与绘线使用）；
-    // 但没有站台，不计入 stationRoutes / stationLines（停靠与换乘语义），因而不停车、不分客流、不能换乘。
+    // 车站服务线路（v2.8.3 / v4.5）：预留站与停用站都可以接轨，线路计入 stationTracks
+    // （结构接入，供界面显示与绘线使用）；但没有站台服务，不计入 stationRoutes / stationLines
+    // （停靠与换乘语义），因而不停车、不分客流、不能换乘。
+    // 预留站补建为正式站、或停用站恢复运营后，编译结果自动按正式站规则生效。
     C.stationRoutes = C.stations.map(function () { return []; });
     C.stationLines = C.stations.map(function () { return new Set(); });
     C.stationTracks = C.stations.map(function () { return new Set(); });
     for (const r of C.routes) for (const si of r.stIdx) {
       C.stationTracks[si].add(r.lineId);
-      if (C.stations[si].rsv) continue;
+      if (!M.stationOpen(C.stations[si])) continue;
       C.stationRoutes[si].push(r.id); C.stationLines[si].add(r.lineId);
     }
     C.serviced = C.stations.map(function (s, i) { return C.stationRoutes[i].length > 0; });
@@ -1209,8 +1223,8 @@
   M.stationBuildCost = function (s, year) { return s && s.rsv ? M.reservedCost(s.type, s.size, year) : M.stationCost(s.type, s.size, year); };
   // 升级为正式站需补交的差价（不含任何手续费与加价）
   M.reservedUpgradeCost = function (type, size, year) { return M.stationCost(type, size, year) - M.reservedCost(type, size, year); };
-  // 维护费折扣：与建筑费同比例
-  M.stationUpkeepFactor = function (s) { return s && s.rsv ? M.reservedRatio() : 1; };
+  // 维护费折扣：停用的车站不运营、不收费；预留站按建筑费同比例
+  M.stationUpkeepFactor = function (s) { return M.stationOff(s) ? 0 : (s && s.rsv ? M.reservedRatio() : 1); };
   M.devFactor = function (city, c) {
     if (c < 0) return 0;
     const L = city.lu[c];

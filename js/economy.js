@@ -150,7 +150,9 @@
       const m = g.model, C = m.net ? m.net.C : null, sd = dt === 'we' ? m.stDailyWe : m.stDailyWk, out = { rev: 0, cost: 0 }; if (!C) return out;
       const y = g.clock.y, live = sd && !m.dailyStale;
       for (let i = 0; i < C.stations.length; i++) {
-        const s = g.net.stations[C.stations[i].id], lv = s && s.tod; if (!lv) continue;
+        const s = g.net.stations[C.stations[i].id], lv = s && s.tod;
+        // v4.5：停用站（以及没有站台的预留站）停止运营，不产生客流收入，也不计商业维护成本
+        if (!lv || !CM.Metro.stationOpen(s)) continue;
         const hub = C.stationLines[i].size >= 2;
         if (live && i < sd.inn.length) out.rev += TOD.stationDaily(lv, sd.inn[i] + sd.out[i] + sd.xfer[i], hub, y, g);
         out.cost += TOD.stationCost(lv, y, s.size, hub);
@@ -170,7 +172,7 @@
       const oi = this.opsIndex(year);
       const dOp = this.opsMul();   // v3.0：难度系数（0.1–3 倍）
       ops += (daily.carKmW != null ? daily.carKmW : daily.carKm) * CFG.ops.carKmCost * oi * dOp;   // v2.5：车厢公里按车型的运营成本系数加权
-      for (const s of compiled.stations) ops += CFG.ops.stationDaily[s.size] * oi * CM.Metro.stationUpkeepFactor(s) * dOp;   // 预留站按 1/5 计维护费
+      for (const s of compiled.stations) ops += CFG.ops.stationDaily[s.size] * oi * CM.Metro.stationUpkeepFactor(s) * dOp;   // 预留站按 1/5 计维护费；停用站不收费（v4.5）
     }
     this.income('fare', fareWan);
     this.spend('ops', ops);

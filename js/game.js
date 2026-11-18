@@ -950,6 +950,20 @@
   };
 
   // 运营组织变化（运行交路，v2.5）：不改动轨道、不收费，立即重新编译并按新的路线求解；草案随之重新检查
+  // v4.5 车站运营开关：即时生效、不进建设草案、不收费。轨道结构保持不变，只切换站台服务。
+  // 正式线网与草案同步写入，避免玩家确认建设时被旧状态覆盖；编译后由 M.stationOpen 统一决定停靠 / 换乘 / 客流 / 费用。
+  Game.prototype.setStationEnabled = function (id, on) {
+    const s = this.net && this.net.stations && this.net.stations[id];
+    if (!s) return { error: '车站已不存在' };
+    if (this.jumping || this.pending) return { error: '正在结算，请稍候' };
+    M.setStationEnabled(this.net, id, on);
+    const d = this.draft;
+    if (d && d.net && d.net.stations[id]) M.setStationEnabled(d.net, id, on);
+    this.logEvent({ tag: '运营', title: on ? '恢复车站运营' : '停用车站',
+      desc: (on ? '「{a}」已恢复运营：重新停靠并计入客流与换乘。' : '「{a}」已停用：列车通过不停靠，不计客流、不提供换乘，也不再支付日常运营费。').replace('{a}', s.name) });
+    this.refreshOperations();
+    return { ok: true };
+  };
   Game.prototype.refreshOperations = function () {
     this.netVersion++; this.rev++;
     this.compiled = M.compile(this.net, this.city);

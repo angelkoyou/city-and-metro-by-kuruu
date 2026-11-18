@@ -198,8 +198,8 @@ try {
 
   // ---------------- 4. 线路页：科技树升级条 + 颜色代码 ----------------
   const lid = await E('Object.keys(CM.game.net.lines)[0]');
-  // 塞一列小编组旧车，保证出现「一键升级 / 可扩编」入口
-  await E(`(()=>{const g=CM.game,k=${JSON.stringify(lid)};g.fleet.trains.push({id:'T99',model:'gen-a',cars:4,bought:g.ym(),cost:100,line:k,svc:null});g.fleet.ver++;g.model.applyFleet();return true})()`);
+  // 塞一列主干旧车型的小编组车，保证出现「一键升级」入口（v4.4：城市特色车不参与科技树升级）
+  await E(`(()=>{const g=CM.game,k=${JSON.stringify(lid)};g.fleet.trains.push({id:'T99',model:'gen-steel',cars:4,bought:g.ym(),cost:100,line:k,svc:null});g.fleet.ver++;g.model.applyFleet();return true})()`);
   await E(`CM.ui.openPage("line",${JSON.stringify(lid)}, {root:true});true`);
   // 升级条在「列车运营」分页
   await until('!!document.querySelector(".ptabs")');
@@ -213,6 +213,8 @@ try {
   await shot('v37-line-upgrade');
   const beforeStale = await E(`(CM.Fleet.staleTech(CM.game,${JSON.stringify(lid)})||[]).map(x=>x.id)`);
   assert.ok(beforeStale.length > 0, '升级条出现时确实有待升级的列车');
+  // v4.4：城市特色车不进科技树升级，升级前后必须保持原车型与编组
+  const beforeCity = await E(`(()=>{const g=CM.game;return g.fleet.trains.filter(t=>t.line===${JSON.stringify(lid)}&&CM.Fleet.isCityTrain(t)).map(t=>t.model+'|'+t.cars)})()`);
   await E('document.querySelector(".up-tech button").click();true');
   await until('!!document.querySelector(".modal-actions")');
   const okBtn = await E('(()=>{const b=[...document.querySelectorAll(".modal-actions button")].find(x=>/补差价升级/.test(x.textContent));if(b){b.click();return true}return false})()');
@@ -221,13 +223,16 @@ try {
   const after = await E(`(()=>{const g=CM.game,k=${JSON.stringify(lid)};
     const tg=CM.Fleet.techTarget(g,k);
     const onLine=g.fleet.trains.filter(t=>t.line===k);
+    const trunk=onLine.filter(t=>!CM.Fleet.isCityTrain(t));
     return {target:tg?{id:tg.m.id,cars:tg.cars}:null,lineCars:CM.Fleet.lineCars(g,k),
-      models:[...new Set(onLine.map(t=>t.model))],cars:onLine.map(t=>t.cars),n:onLine.length,
+      models:[...new Set(trunk.map(t=>t.model))],cars:trunk.map(t=>t.cars),n:onLine.length,
+      city:onLine.filter(t=>CM.Fleet.isCityTrain(t)).map(t=>t.model+'|'+t.cars),
       stale:(CM.Fleet.staleTech(g,k)||[]).map(x=>x.id),
       toasts:[...document.querySelectorAll(".toast")].map(x=>x.textContent.trim())}})()`);
   assert.equal(after.stale.length, 0, '升级后本线没有待升级列车（车型与编组都到顶）：' + after.stale.join(','));
-  assert.ok(after.cars.every(c => c >= after.target.cars), '每列编组都不小于目标：' + JSON.stringify(after.cars));
-  assert.ok(after.models.every(m => m === after.target.id), '车型统一到本城最新：' + after.models.join('/'));
+  assert.ok(after.cars.every(c => c >= after.target.cars), '每列主干车编组都不小于目标：' + JSON.stringify(after.cars));
+  assert.ok(after.models.every(m => m === after.target.id), '主干车统一到科技树目标车型：' + after.models.join('/'));
+  assert.deepEqual(after.city, beforeCity, '城市特色车未被换车型或扩编');
   assert.ok(after.toasts.some(t => /已升级/.test(t)), '弹出升级结果提示');
 
   // 颜色代码输入：切到「编辑」分页并展开「线路颜色」，输入 #F3D03E 后线路颜色立即变化

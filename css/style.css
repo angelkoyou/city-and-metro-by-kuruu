@@ -3243,6 +3243,14 @@ body.cinema #immExit { top: max(12px, env(safe-area-inset-top)); right: max(12px
 .fo-auto.up-auto > .btn { align-self: flex-end; }
 /* v3.5：同车型扩编是可选优化，用中性底色与「必须换车型」的两条区分 */
 .fo-auto.up-cars { border-color: var(--line-strong); background: var(--surface-2); }
+/* v4.5：车站运营开关条（窄侧栏里说明与按钮并排）；停用态用警示色明确标出 */
+.st-onoff { border: 1px solid var(--line); margin: 0 0 8px; }
+.st-onoff > .grow { min-width: 0; }
+.st-onoff > .btn { flex: 0 0 auto; }
+.st-onoff.off { border-color: var(--bad); }
+.st-onoff.off b { color: var(--bad); }
+/* v4.4：城市特色车扩编独立于科技树升级条，用中性边框 */
+.fo-auto.up-city { border-color: var(--line-strong); }
 /* 160 速度档的站台不足：按钮可点（要弹错误提示），但视觉上置灰 */
 .seg-ctl.sm button.locked { opacity: .55; }
 .fo-buy b.bad { color: var(--bad); }

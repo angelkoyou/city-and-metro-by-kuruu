@@ -3259,7 +3259,7 @@
     for (let i = 0; i < n; i++) {
       const lines = groupLines[i], f = lines.size > 1 || xfer.has(i);
       inter[i] = f ? 1 : 0;
-      let k = (C.stations[i].rsv ? 'r' : (C.serviced[i] ? 's' : 'u')) + (f ? 'x' : 'o') + (C.stations[i].size || '');
+      let k = (C.stations[i].rsv ? 'r' : (C.stations[i].off ? 'f' : (C.serviced[i] ? 's' : 'u'))) + (f ? 'x' : 'o') + (C.stations[i].size || '');
       lines.forEach(function (id) { const L = C.net.lines[id]; k += ',' + (L ? AX.line(L) : '#888888'); });
       keys[i] = k;
     }
@@ -3281,6 +3281,21 @@
         const k = r * 0.5;
         ctx.strokeStyle = '#6f757f'; ctx.lineWidth = Math.max(1.3, r * 0.2); ctx.lineCap = 'round';
         ctx.beginPath(); ctx.moveTo(p.x - k, p.y); ctx.lineTo(p.x + k, p.y); ctx.moveTo(p.x, p.y - k); ctx.lineTo(p.x, p.y + k); ctx.stroke();
+      }
+      ctx.restore();
+      return;
+    }
+    // v4.5 停用站：轨道还在、站台停运。灰底 + 一道斜杠，与「未通车」的虚线圈和预留站的十字都区分开
+    if (s.off) {
+      ctx.save();
+      const ga = ctx.globalAlpha;
+      ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.globalAlpha = ga * 0.2; ctx.fillStyle = TH.stFill; ctx.fill(); ctx.globalAlpha = ga;
+      ctx.strokeStyle = '#8a8f98'; ctx.lineWidth = Math.max(1.8, r * 0.3); ctx.stroke();
+      if (r >= 4) {
+        const k = r * 0.62;
+        ctx.strokeStyle = '#8a8f98'; ctx.lineWidth = Math.max(1.6, r * 0.24); ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(p.x - k, p.y + k); ctx.lineTo(p.x + k, p.y - k); ctx.stroke();
       }
       ctx.restore();
       return;
@@ -5435,7 +5450,7 @@
         if (s.portal && CM.Fac && CM.Fac.isPortalStation(s)) continue;   // 接驳口车站的名称由接驳口名称牌显示
         if (named && named.has(s.id)) continue;
         const font = (rsLbl && rsLbl.groupLines[i] ? rsLbl.groupLines[i] : C.stationLines[i]).size > 1 ? TYPE.placeMajor : TYPE.place;   // 按实际字重测宽，避免换乘站名与旁边标注重叠
-        const nm = s.rsv ? s.name + ' · 预留' : s.name;   // 预留站：站名后标注，避免与未通车的正式站混淆
+        const nm = s.rsv ? s.name + ' · 预留' : (s.off ? s.name + ' · 停用' : s.name);   // 预留站 / 停用站都在站名后标注，避免与正常运营车站混淆
         const w = this.textW(font, nm);
         // 右侧放不下时依次试左侧、上方（图层标注较多时站名仍尽量显示）
         let x = p.x + p.r + 4, y = p.y;

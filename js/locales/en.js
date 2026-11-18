@@ -8590,3 +8590,64 @@ Object.assign(window.CM.I18N_EN, {
   "合同页在无限贷款下会注明「可透支支付」，看到负余额时不用再猜能不能投标；关掉开关后立刻恢复普通模式的校验。": "The contract page notes that the bond can be paid by overdraft while infinite loan is on, so a negative balance no longer leaves you guessing; switching it off restores the normal check at once.",
   "其余规则不动：同时最多承接 5 个合同与待评标项目、投标后下月初公布结果、违约仍扣保证金，这些限制不会因无限贷款放宽。": "Other rules are unchanged: at most five contracts and pending bids at once, results published early next month, and the bond still forfeited on default - infinite loan does not relax any of them.",
 });
+
+// —— v4.4 车型规则：城市特色车只能手动购置、只能编组升级 ——
+Object.assign(window.CM.I18N_EN, {
+  "尚未购置：买过之后才参与自动配置": "Not owned yet: only after a purchase can it join automatic allocation",
+  "扩编本线城市特色车？": "Lengthen this line's city trains?",
+  "这条线路没有可以扩编的城市特色车": "No city trains on this line can be lengthened",
+  "只加挂车厢，不换车型、不重置车龄，也不触发科技树升级": "Adds cars only: no model change, no age reset, and no tech-tree upgrade",
+  "城市特色车可扩编到最多 {a} 节": "City trains can be lengthened to up to {a} cars",
+  "本线 {a} 列城市特色车（{b}，最短 {c} 节）：保持原车型与车龄，补差价加挂到最多 {d} 节；城市特色车不参与科技树升级。": "This line's {a} city trains ({b}, shortest {c} cars): keep their model and age, and pay the difference to add cars up to {d}; city trains do not take part in tech-tree upgrades.",
+  "本线 {a} 列城市特色车（共 {b} 节）将在原车型上加挂 {c} 节：补差价 {d}，车龄不变，不会换成其他车型。": "This line's {a} city trains ({b} cars in total) will gain {c} cars on the same model: pay the difference {d}, ages unchanged, and no switch to another model.",
+  "已为 {a} 列城市特色车加挂 {b} 节，补差价 {c}": "{a} city trains gained {b} cars, paying the difference {c}",
+});
+
+// —— v4.4 更新公告 ——
+Object.assign(window.CM.I18N_EN, {
+  "新建线路默认车型只取主干科技树，城市特色车要先购置": "New lines default to a main-branch tech-tree model; city trains must be purchased first",
+  "新建线路、购车窗口的默认车型现在统一从主干科技树里挑（160 轨道仍固定 D 型无人列车），不再因为本城车型排在列表前面就自动选成城市特色车。": "New lines and the train shop now share one rule for the default model, drawn only from the main tech-tree branch (160 km/h tracks still use Type D). A city model is no longer picked automatically just because it sorts first.",
+  "城市支线车型照旧可以在购车窗口手动买，买过之后才记为「已购置」；没买过的卡片会标出「尚未购置」，也不会被自动选中。": "City-branch models can still be bought manually in the shop. A purchase marks the model as owned; unowned cards are labelled as such and are never preselected.",
+  "已购置的城市特色车型才会被智能分配、自动配置这些自动功能启用；自动配置补车时只买主干车型，绝不替玩家买城市特色车。": "Only owned city models are enabled for automatic features such as smart allocation and auto-configuration. Auto-configuration buys main-branch models only and never purchases city trains on the player's behalf.",
+  "科技树升级、无人驾驶改装与 D 型改装的判定和流程都排除城市特色车：它们不会被换成主干车型，也不计入待升级列车与补差价报价。": "Tech-tree upgrades, driverless retrofits and Type D retrofits all exclude city trains from both their checks and their execution: they are never switched to a main-branch model and are not counted in the upgrade list or price-difference quote.",
+  "城市特色车的补差价升级现在只有一个用途——同车型加挂车厢：线路「列车运营」页单独给出扩编入口，车型与车龄都不变。": "Paying the difference on a city train now serves one purpose only - adding cars of the same model. The line's Train Operations tab has a separate lengthening button that keeps both model and age unchanged.",
+  "当年主干没有能跑这条线速度的车型时，随线配车、智能分配与自动配置会直接跳过、不擅自配车；旧存档按车队里已有的列车补记已购置状态。": "When no main-branch model can run at a line's speed, minimum fleet provisioning, smart allocation and auto-configuration simply skip it instead of assigning an unsuitable train; old saves backfill owned models from the trains already in the fleet.",
+});
+
+// —— v4.5 车站启用开关 / 预留站多线换乘 ——
+Object.assign(window.CM.I18N_EN, {
+  "已停用 · 不停靠": "Closed · no stops",
+  "已停用 · 不停靠、不计客流与运营费": "Closed · no stops, ridership or upkeep",
+  "⇄ 预留换乘 · 补建后启用": "⇄ Planned interchange · activates when built out",
+  "车站运营中": "Station operating",
+  "车站已停用": "Station closed",
+  "停用本站": "Close station",
+  "恢复运营": "Reopen",
+  "恢复车站运营": "Station reopened",
+  "停用车站": "Station closed",
+  " · 预留": " · reserved",
+  " · 停用": " · closed",
+  "本站正常停靠、计入客流与换乘，并按站厅规模支付日常运营费。": "Trains stop here; the station counts for ridership and interchanges and pays daily upkeep based on its concourse size.",
+  "本站停止运营：列车通过不停靠，不计客流、不提供换乘，也不再支付日常运营费。": "This station is closed: trains pass through without stopping, it has no ridership or interchange service, and daily upkeep is no longer charged.",
+  "停用后轨道保留，随时可以恢复运营": "Tracks are kept when the station is closed, so it can be reopened at any time",
+  "恢复运营后本站重新停靠，并按正式站规则启用换乘与客流": "Reopening restores stops, interchanges and ridership under the normal station rules",
+  "已停用「{a}」：列车通过不停靠，本站不再计客流与运营费": "Closed {a}: trains pass through without stopping, and the station no longer counts for ridership or upkeep",
+  "「{a}」已恢复运营": "{a} has reopened",
+  "「{a}」已恢复运营：重新停靠并计入客流与换乘。": "{a} has reopened: trains stop here again and it counts for ridership and interchanges.",
+  "「{a}」已停用：列车通过不停靠，不计客流、不提供换乘，也不再支付日常运营费。": "{a} has been closed: trains pass through without stopping, with no ridership, no interchange service and no daily upkeep.",
+  "这座车站已停用：列车通过不停靠，不计入地铁覆盖与客流，不产生票款，也不再支付日常运营费。在上方打开「是否启用」即可恢复。": "This station is closed: trains pass through without stopping, it is excluded from coverage and ridership, earns no fares and pays no daily upkeep. Use the switch above to reopen it.",
+  "这座车站已停用，停止运营期间不能开发或升级商业空间。": "This station is closed; commercial space cannot be developed or upgraded while it is out of service.",
+  "预留站可以被多条线路接轨来表示未来换乘站；补建为正式站后，自动按正式站规则启用换乘与客流计算。": "A reserved station may be joined by several lines to mark a future interchange. Once built out as a full station, interchanges and ridership start automatically under the normal rules.",
+  "同一座预留站可以被多条线路连接，用来表示未来的换乘站；升级前不提供换乘功能，也不参与客流计算。": "The same reserved station can be connected by multiple lines to mark a future interchange. Until it is upgraded it offers no interchange and is excluded from ridership.",
+});
+
+// —— v4.5 更新公告 ——
+Object.assign(window.CM.I18N_EN, {
+  "车站启用开关，预留站可以预留未来换乘": "Station on/off switch and reserved future interchanges",
+  "每座车站都多了「是否启用」开关，默认启用；停用立即生效、不收费、不进建设草案，轨道与站体都保留，随时可以一键恢复。": "Every station now has an on/off switch, enabled by default. Closing a station takes effect at once, is free, bypasses the construction draft, keeps the tracks and buildings, and can be undone with one click.",
+  "停用后列车通过不停靠：本站不计入地铁覆盖与客流统计，不产生进出站与换乘人次，也不再支付日常运营费与商业维护费；地图上画成带斜杠的灰圈，站名标注「停用」。": "Closed stations are passed through without stopping: they are excluded from coverage and ridership, generate no entries, exits or transfers, and pay no daily upkeep or commercial maintenance. On the map they appear as a grey circle with a slash and the station name is marked as closed.",
+  "车站页顶部显示「车站运营中 / 车站已停用」状态条与切换按钮，概况页、搜索结果和「运营与费用」都同步反映停用状态。": "The station page shows an operating/closed status bar with a toggle at the top, and the overview, search results and Operations & Costs section all reflect the closed state.",
+  "预留站现在明确支持被多条线路连接，用来占住未来的换乘站址：多线接入时车站页标为「预留换乘 · 补建后启用」，不再误显示成已开通的换乘站。": "Reserved stations now explicitly support connections from multiple lines so you can hold a future interchange site. With several lines attached, the station page labels it as a planned interchange that activates once built out, rather than showing it as an open interchange.",
+  "升级为正式站前，预留站仍然通过不停靠、不提供换乘、不计客流；补交差价补建后，编译结果自动按正式站规则启用换乘与客流计算，不必重建线路。": "Until upgraded, a reserved station is still passed through without stopping, offers no interchange and is excluded from ridership. After paying the difference to build it out, compilation automatically applies the normal station rules for interchanges and ridership - no need to rebuild the lines.",
+  "所有「这座站是否对外服务」的判断统一走同一个入口，编译、交通求解、经济结算与界面共用；旧存档没有开关字段时一律按启用处理。": "Every check of whether a station is in service now goes through one shared rule used by compilation, traffic solving, economic settlement and the UI; old saves without the switch field are treated as enabled.",
+});

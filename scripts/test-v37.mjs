@@ -106,62 +106,64 @@ assert.equal(tOther.branch.filter(n => n.own).length, 0, '在gz 图上香港车�
 assert.equal(F.treeNodes('tutorial', 2026, null).branch.length, 0, '教程图没有城市支线');
 console.log('PASS 科技树节点按年份自动点亮');
 
-// ================= 3. 当前最新车型：按上市年取最新，不按城市优先 =================
+// ================= 3. v4.4 科技树升级目标：只取主干（160 线取 D 型），城市特色车型不参与 =================
 const gz = (y, lid) => mkG({ mapId: 'gz', y: y, ...(lid ? { lines: { L1: { id: 'L1', name: '1 号线', speed: lid } } } : {}) });
-assert.equal(F.latestModel(gz(2006), null).id, 'gz-l4', '2006 年本城最新是 L4 型（2005）');
-assert.equal(F.latestModel(gz(2009), null).id, 'gen-eco', '2009 年主干节能车（2008）比 L4 型新');
-assert.equal(F.latestModel(gz(2011), null).id, 'gz-a8', '2011 年国产 A 型（2010）反超');
-assert.equal(F.latestModel(gz(2026), null).id, 'gen-auto', '无人驾驶时代固定全自动车');
+assert.equal(F.latestModel(gz(2006), null).id, 'gen-a', '2006 年按主干取 A 型车，不再选本城 L4 型');
+assert.equal(F.latestModel(gz(2009), null).id, 'gen-eco', '2009 年主干节能车');
+assert.equal(F.latestModel(gz(2011), null).id, 'gen-eco', '2011 年仍按主干，不因本城国产 A 型上市而反超');
+assert.equal(F.latestModel(gz(2026), null).id, 'gen-auto', '无人驾驶时代全自动车属于主干');
 assert.equal(F.latestModel(gz(2010, 160), 'L1').id, 'gen-d160', '160 线由 D 型车接管');
 assert.equal(F.latestModel(gz(2000, 160), 'L1'), null, 'D 型车上市前 160 线没有可用车型');
-// 速度向下兼容：线路 100 km/h 时只有 100 km/h 以上的车型可选
+// 速度向下兼容：线路 100 km/h 时只有主干里 100 km/h 以上的车型可选
 const fast = F.latestModel(gz(2012, 100), 'L1');
-assert.ok(fast && fast.kmh >= 100, '100 km/h 线路只挑速度够用的车：' + (fast && fast.id));
-console.log('PASS 当前最新车型（上市年最新 + 速度向下兼容）');
+assert.ok(fast && fast.kmh >= 100 && !fast.maps, '100 km/h 线路只挑主干中速度够用的车：' + (fast && fast.id));
+assert.equal(F.latestModel(gz(2015, 130), 'L1'), null, '主干没有那么快的车时返回 null，不退回城市特色车型');
+console.log('PASS 当前最新车型（v4.4 只取主干 + 速度向下兼容）');
 
-// ================= 4. 升级目标与待升级列车 =================
+// ================= 4. 升级目标与待升级列车（城市特色车排除在科技树之外） =================
 const g4 = mkG({ trains: [
   { id: 'T1', model: 'gen-a', cars: 8, bought: 2010 * 12, cost: 1000, line: 'L1' },      // 旧车型，满编
-  { id: 'T2', model: 'bj-a', cars: 4, bought: 2018 * 12, cost: 900, line: 'L1' },       // 已是最新车型，编组不足
-  { id: 'T3', model: 'bj-a', cars: 8, bought: 2018 * 12, cost: 1800, line: 'L1' },      // 最新 + 满编
+  { id: 'T2', model: 'bj-a', cars: 4, bought: 2018 * 12, cost: 900, line: 'L1' },       // 城市特色车：不进科技树升级，只可扩编
+  { id: 'T3', model: 'bj-a', cars: 8, bought: 2018 * 12, cost: 1800, line: 'L1' },      // 城市特色车已满编
   { id: 'T4', model: 'gen-a', cars: 6, bought: 2010 * 12, cost: 800, line: 'L2' },      // 别的线路
   { id: 'T5', model: 'gen-a', cars: 4, bought: 2010 * 12, cost: 600, line: 'L1' },      // 旧车型但编组偏小
 ]});
 const tgt = F.techTarget(g4, 'L1');
-assert.equal(tgt.m.id, 'bj-a', '2020 年北京最新是 bj-a');
+assert.equal(tgt.m.id, 'gen-eco', '2020 年北京的主干目标是节能车');
 assert.equal(tgt.cars, 8, '编组取线路上限与该车型上限的较小值');
-assert.deepEqual(Array.from(F.staleTech(g4, 'L1'), t => t.id), ['T1', 'T2', 'T5'], '挑出换车型的与同车型扩编的，不含已满编与别线');
+assert.deepEqual(Array.from(F.staleTech(g4, 'L1'), t => t.id), ['T1', 'T5'], '只挑主干旧车型，城市特色车不参与科技树升级判定');
+assert.deepEqual(Array.from(F.cityStaleCars(g4, 'L1'), t => t.id), ['T2'], '城市特色车只走同车型扩编通道');
 // 固定编组车型（D 型）目标编组固定 8 节，不按线路上限缩放
 const g160 = mkG({ lines: { L1: { id: 'L1', name: '1 号线', speed: 160 } }, routes: [{ lineId: 'L1', cars: 6 }], y: 2020 });
 assert.equal(F.techTarget(g160, 'L1').cars, 8, 'D 型车固定 8 节，不受站台上限 6 节影响');
-// 当前编组大于目标时跳过（城市支线新车更短时不能把长编组降下来）
+// 当前编组大于目标时跳过（不能把长编组降下来）
 const gBig = mkG({ routes: [{ lineId: 'L1', cars: 6 }], trains: [{ id: 'T9', model: 'gen-a', cars: 8, bought: 0, cost: 1, line: 'L1' }] });
 assert.equal(F.techTarget(gBig, 'L1').cars, 6);
 assert.equal(F.staleTech(gBig, 'L1').length, 0, '编组已经超过目标时不提示降编');
-console.log('PASS 升级目标（最新车型 + 线路允许的最大编组）');
+console.log('PASS 升级目标（v4.4 主干车型 + 城市特色车单独扩编）');
 
 // ================= 5. 补差价报价与一键升级 =================
 const g5 = mkG({ trains: [
   { id: 'T1', model: 'gen-a', cars: 6, bought: 2010 * 12, cost: 1000, line: 'L1' },
-  { id: 'T2', model: 'bj-a', cars: 4, bought: 2018 * 12, cost: 900, line: 'L1' },
+  { id: 'T2', model: 'gen-eco', cars: 4, bought: 2018 * 12, cost: 900, line: 'L1' },   // 主干目标车型，编组不足 → 同车型扩编
 ]});
 const list5 = F.staleTech(g5, 'L1');
 assert.deepEqual(Array.from(list5, t => t.id), ['T1', 'T2']);
 const q5 = F.techQuote(g5, list5, 'L1');
-const bjA = F.model('bj-a');
-const np8 = F.price(g5, bjA, 8, 2020);
+const tgtM = F.model('gen-eco');
+const np8 = F.price(g5, tgtM, 8, 2020);
 const res1 = F.residual(g5, g5.fleet.trains[0]);
 const res2 = F.residual(g5, g5.fleet.trains[1]);
 assert.equal(q5.n, 2); assert.equal(q5.targetCars, 8);
 assert.equal(q5.reset, 1, '换车型 1 列');
 assert.equal(q5.expand, 1, '同车型扩编 1 列');
 assert.ok(Math.abs(q5.credit - res1) < 1e-6, '残值抵扣只算换车型的那列');
-assert.ok(Math.abs(q5.cost - (Math.max(0, np8 - res1) + Math.max(0, np8 - F.price(g5, bjA, 4, 2020)))) < 1e-6, '换车型扣残值，同车型只补编组差价');
+assert.ok(Math.abs(q5.cost - (Math.max(0, np8 - res1) + Math.max(0, np8 - F.price(g5, tgtM, 4, 2020)))) < 1e-6, '换车型扣残值，同车型只补编组差价');
 assert.ok(q5.cost > 0 && q5.credit > 0);
 const before5 = g5.fleet.trains.map(t => t.bought);
 const r5 = F.upgradeTech(g5, 'L1');
 assert.equal(r5.ok, true);
-assert.equal(g5.fleet.trains[0].model, 'bj-a', '旧车型换到最新车型');
+assert.equal(g5.fleet.trains[0].model, 'gen-eco', '旧车型换到主干目标车型');
 assert.equal(g5.fleet.trains[0].cars, 8, '编组升到最大');
 assert.equal(g5.fleet.trains[0].bought, g5.ym(), '换车型后车龄重置');
 assert.notEqual(g5.fleet.trains[0].bought, before5[0]);
@@ -194,21 +196,21 @@ assert.ok(needA > 0, '测试前提：交路有最低服务需求');
 const ra = F.autoConfigRun(gA);
 assert.equal(ra.bought, needA, '没有空闲车时按需购买');
 assert.equal(gA.fleet.trains.length, needA);
-assert.ok(gA.fleet.trains.every(t => t.line === 'L1' && t.model === 'bj-a' && t.cars === 8), '买的是该时代主流车型与本线最长编组');
+assert.ok(gA.fleet.trains.every(t => t.line === 'L1' && t.model === 'gen-eco' && t.cars === 8), 'v4.4 自动配置只买主干目标车型与本线最长编组');
 assert.equal(F.autoConfigRun(gA).bought, 0, '已配齐后再跑不重复买');
 // 车辆段有同型号空闲车：先调车，不买车
 const gB = mkAuto({ trains: [
-  { id: 'T1', model: 'bj-a', cars: 8, bought: 0, cost: 1, line: null },
-  { id: 'T2', model: 'bj-a', cars: 8, bought: 0, cost: 1, line: null },
+  { id: 'T1', model: 'gen-eco', cars: 8, bought: 0, cost: 1, line: null },
+  { id: 'T2', model: 'gen-eco', cars: 8, bought: 0, cost: 1, line: null },
 ]});
 const rb = F.autoConfigRun(gB);
 assert.equal(rb.moved, 2, '优先从车辆段调空闲车');
 assert.equal(rb.bought, needA - 2, '不足部分才买');
 assert.equal(gB.fleet.trains[0].line, 'L1');
 assert.equal(gB.fleet.trains[0].svc, F.lineInfo(gB, 'L1')[0].id, '调到具体交路');
-// 编组超过站台上限 / 型号不是主流车型的空闲车不调
+// 编组超过站台上限 / 型号不是目标车型的空闲车不调
 const gC = mkAuto({ routes: [{ ...autoRoute, cars: 6 }], trains: [
-  { id: 'T1', model: 'bj-a', cars: 8, bought: 0, cost: 1, line: null },
+  { id: 'T1', model: 'gen-eco', cars: 8, bought: 0, cost: 1, line: null },
   { id: 'T2', model: 'gen-a', cars: 6, bought: 0, cost: 1, line: null },
 ]});
 const rc = F.autoConfigRun(gC);

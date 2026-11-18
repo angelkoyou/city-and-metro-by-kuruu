@@ -106,6 +106,55 @@
   };
   F.CITY_ORDER = ['gz', 'sh', 'bj', 'hz', 'wh', 'hk', 'tp', 'pa', 'tk'];
   F.BRANCH_160 = ['gen-d160'];
+  // ---------------- v4.4 车型归属与统一选用规则 ----------------
+  // 科技树分三层：主干（通用车型）、160 支线（D 型）、城市支线（城市特色车型）。
+  // 自动选用——新线随线配车、购车弹窗的默认选中、科技树升级目标、自动配置买车——只认主干与 160 支线；
+  // 城市特色车型是「支线」，只能由玩家在购车弹窗里手动选购，买过之后才参与调车与自动配置。
+  // 所有判断都走这里，避免各功能各写一套规则。
+  F.isCity = function (m) { return !!(m && m.maps && m.maps.length > 0); };
+  F.isTrunk = function (m) { return !!m && F.TRUNK.indexOf(m.id) >= 0; };
+  F.is160Model = function (m) { return !!m && !!m.only160; };
+  // 玩家买过的车型（随存档保存）：城市特色车型的「已购置」状态由它判断。
+  // 旧存档没有这个字段时，F.ensure 按现有列车补记；主干与 160 支线不受购置限制。
+  F.markOwned = function (g, id) {
+    const fl = g && g.fleet; if (!fl || !id) return;
+    if (!Array.isArray(fl.owned)) fl.owned = [];
+    if (fl.owned.indexOf(id) < 0) fl.owned.push(id);
+  };
+  F.ownsModel = function (g, m) {
+    const id = typeof m === 'string' ? m : (m && m.id);
+    if (!id) return false;
+    const mdl = BY.get(id);
+    if (mdl && (F.isTrunk(mdl) || F.is160Model(mdl))) return true;
+    const fl = g && g.fleet; if (!fl) return false;
+    if (Array.isArray(fl.owned) && fl.owned.indexOf(id) >= 0) return true;
+    return !!(fl.trains && fl.trains.some(function (t) { return t.model === id; }));
+  };
+  // 自动选用的车型：只取主干；160 轨道取 160 支线的 D 型车。
+  // 返回 null 表示当年主干科技树还没有能跑这条线的车型（例如 120 km/h 只有城市特色车型能跑），
+  // 这时不自动配车、也不自动买车，交给玩家手动选购。
+  F.trunkModel = function (mapId, y, need) {
+    need = need || 0;
+    if (need >= 160) { const d = BY.get(F.dModelId); return d && y >= d.from && y <= d.to && (!d.maps || d.maps.indexOf(mapId) >= 0) ? d : null; }
+    const all = F.TRUNK.map(function (id) { return BY.get(id); }).filter(function (m) {
+      return m && y >= m.from && y <= m.to && (!m.maps || m.maps.indexOf(mapId) >= 0);
+    });
+    const fast = all.filter(function (m) { return m.kmh >= need; });
+    fast.sort(function (a, b) { return (b.from - a.from) || (b.cap - a.cap); });
+    return fast[0] || null;
+  };
+  // 系统能否自动「启用 / 选中 / 参与自动配置」这个车型：
+  //   · 主干与 160 支线恒可用；城市特色车型只有玩家买过（g.fleet.owned 或车队里有）才可用。
+  //   · 购车弹窗是「购置」入口，不受此限制，否则第一次购买会死锁；它只负责不默认选中城市特色车型。
+  F.canAutoPick = function (g, m) {
+    if (!m) return false;
+    if (F.isCity(m)) return F.ownsModel(g, m);
+    return F.isTrunk(m) || F.is160Model(m);
+  };
+  F.isCityTrain = function (t) { return F.isCity(F.model(t.model)); };
+  // 城市特色车型只走「同车型补差价扩编」，不进科技树升级 / 换车型改装的任何判定与流程。
+  // 所有升级过滤都调这一个函数，避免各功能各写一套。
+  F.canTechUpgrade = function (t) { return !F.isCityTrain(t); };
   // 地图 → 城市支线：经典广州图与教程图没有城市专属车型，归到各自的主线城市（只影响科技树的展示）
   F.cityOfMap = function (mapId) {
     if (mapId === 'gz1990') return 'gz';
@@ -137,16 +186,12 @@
     const d160 = F.BRANCH_160.map(function (id) { return mk(id, '160'); }).filter(Boolean);
     return { city: key, trunk: trunk, branch: branch, d160: d160 };
   };
-  // 本城当年最新、且能跑这条线路的车型（160 线路固定 D 型；无人驾驶时代固定全自动车）
-  // 取「上市年最新」的车：同年再比本城专属优先、定员大；购车列表的城市优先排序不适用于此处
+  // 本线科技树升级的目标车型（v4.4）：只取主干（160 轨道取 160 支线的 D 型车），
+  // 城市特色车型永远不参与科技树升级判定。返回 null 表示当年主干没有能跑这条线的车型。
   F.latestModel = function (g, lid) {
     const y = g && g.clock ? g.clock.y : CFG.START.y;
     const kmh = lid && g.net.lines[lid] ? CM.Metro.lineKmh(g.net.lines[lid]) : 80;
-    if (kmh >= 160) { const d = BY.get('gen-d160'); return d && y >= d.from ? d : null; }
-    if (F.autoOn(g.mapId, y)) return BY.get(F.autoModelId);
-    const a = F.available(g.mapId, y).filter(function (m) { return !m.only160 && (kmh <= 80 || m.kmh >= kmh); });
-    a.sort(function (x, z) { return (z.from - x.from) || ((x.maps ? 0 : 1) - (z.maps ? 0 : 1)) || (z.cap - x.cap); });
-    return a[0] || null;
+    return F.trunkModel(g.mapId, y, kmh);
   };
   F.cityLabel = function (id) {
     const mp = CM.MAPS && CM.MAPS[id];
@@ -181,29 +226,24 @@
   };
   F.autoUnlocked = function (g) { return !!g && F.autoOn(g.mapId, g.clock.y); };
   F.autoOnly = function (m) { return !!m && (m.id === F.autoModelId || !!m.only160); };
-  // 某条线路（lid 为空时：车辆段）在当年能买、以及以后才开放的车型
+  // 某条线路（lid 为空时：车辆段）在当年能买、以及以后才开放的车型。
+  // defaultModel：购车弹窗默认选中的车型——只取主干（160 线路取 D 型车），绝不默认城市特色车型。
   F.buyList = function (g, lid) {
     const ok = function (m) { return F.fitModel(g, lid, m); };
     let list = F.available(g.mapId, g.clock.y).filter(ok), soon = F.upcoming(g.mapId, g.clock.y).filter(ok);
     const forced = F.autoUnlocked(g);
     // 无人驾驶时代：只保留全自动无人驾驶车与 D 型无人列车，其余车型（含「即将开放」）不再出现
     if (forced) { list = list.filter(F.autoOnly); soon = soon.filter(F.autoOnly); }
-    return { list: list, soon: soon, forced: forced };
+    // 默认选中与「随线配车 / 自动配置」共用同一个 F.recommend（只取主干；160 线路取 D 型车）
+    const need = lid && g.net.lines[lid] ? CM.Metro.lineKmh(g.net.lines[lid]) : 0;
+    const pick = F.recommend(g.mapId, g.clock.y, need);
+    const def = (pick && list.indexOf(pick) >= 0 ? pick : null) || list.filter(function (m) { return !F.isCity(m); })[0] || list[0] || null;
+    return { list: list, soon: soon, forced: forced, defaultModel: def };
   };
-  // 推荐车型（随线配车用）：本城当年最新的真实车型，没有则用通用车型里最新的
+  // 推荐车型（随线配车、智能分配补车用）：只从主干里选（160 线路取 D 型车）。
+  // 城市特色车型只能由玩家手动选购，绝不作为新线默认车型；need 高于主干现有车型时返回 null。
   // need：线路运行速度超过 80 km/h 时，车型的最高速度不能低于它（v2.5）；160 专用车只在 160 线路上推荐
-  // v3.3：无人驾驶时代只推荐全自动无人驾驶车（160 线路仍用 D 型无人列车），避免预测按停售车型配车
-  F.recommend = function (mapId, y, need) {
-    if (F.autoOn(mapId, y)) {
-      const auto = BY.get(F.autoModelId);
-      if (need >= 160) { const d = BY.get('gen-d160'); if (d && y >= d.from) return d; }
-      if (auto.kmh >= need || need <= 80) return auto;
-    }
-    const a = F.available(mapId, y);
-    if (need > 80) { const fast = a.filter(function (m) { return m.kmh >= need && (!m.only160 || need >= 160); }); if (fast.length) return fast[0]; }
-    const norm = a.filter(function (m) { return !m.only160; });
-    return norm[0] || a[0] || BY.get('gen-early');
-  };
+  F.recommend = function (mapId, y, need) { return F.trunkModel(mapId, y, need); };
   // 线路运行速度能否选用：80 km/h 及以下不限车型；更高的速度要当年买得到足够快的车型，否则给出最早开放的年份
   F.speedOpen = function (mapId, y, kmh) {
     if (kmh <= 80 || F.available(mapId, y).some(function (m) { return m.kmh >= kmh; })) return { ok: true };
@@ -217,7 +257,8 @@
     if (m.only160 && rt.kmh < 160) return true;
     return rt.kmh > 80 && m.kmh < rt.kmh;
   };
-  // 某年代的车型（旧存档与开局既有线路的车队）：当年可买的推荐车型；早于所有车型时取最早的通用车
+  // 某年代的车型：只用于开局既有线路与旧存档的「历史车队」（不是新建线路的默认车型）。
+  // 这里保留本城真实车型（含城市特色车型），因为它们是被玩家接管的历史资产，不参与自动选用规则。
   // v3.3：无人驾驶时代统一用全自动无人驾驶车（与购买列表一致）
   F.eraModel = function (mapId, y) {
     if (F.autoOn(mapId, y)) return BY.get(F.autoModelId);
@@ -286,10 +327,13 @@
         for (const u of fp.units[d]) { n++; cap += u.cap; cars += u.cars; ops += u.ops; }
       }
       if (nd === 1) { fp.avail[1] = fp.avail[0]; fp.units[1] = fp.units[0]; }
-      if (draft && !rt.svc) {   // 预测：随线配车会把全程交路的列车补到最低需要（用推荐车型）；加开的交路由玩家配车
-        const m = F.recommend(g.mapId, y, rt.kmh), c = Math.min(rt.cars, m.max);
-        for (let d = 0; d < nd; d++) { const add = Math.max(0, fp.floor - fp.avail[d]); fp.avail[d] += add; n += add; cap += add * m.cap * c; cars += add * c; ops += add * m.ops; }
-        if (nd === 1) fp.avail[1] = fp.avail[0];
+      if (draft && !rt.svc) {   // 预测：随线配车会把全程交路的列车补到最低需要（只按主干车型）；加开的交路由玩家配车
+        const m = F.recommend(g.mapId, y, rt.kmh);
+        if (m) {
+          const c = Math.min(rt.cars, m.max);
+          for (let d = 0; d < nd; d++) { const add = Math.max(0, fp.floor - fp.avail[d]); fp.avail[d] += add; n += add; cap += add * m.cap * c; cars += add * c; ops += add * m.ops; }
+          if (nd === 1) fp.avail[1] = fp.avail[0];
+        }
       }
       if (n) { fp.cap = cap / n; fp.cars = cars / n; fp.opsF = ops / n * (rt.opsK || 1); }
       const o = fl.ops[rt.lineId];
@@ -305,7 +349,7 @@
   F.changed = changed;
   const newTrain = function (g, mdl, cars, cost, line, svc, bought) {
     const fl = g.fleet, t = { id: 'T' + (fl.seq++), model: mdl.id, cars: cars, bought: bought == null ? g.ym() : bought, cost: Math.round(cost), line: line || null, svc: svc || null };
-    fl.trains.push(t); return t;
+    fl.trains.push(t); F.markOwned(g, mdl.id); return t;
   };
 
   // ---------------- 建立车队（新局开局的既有线路、旧存档） ----------------
@@ -314,7 +358,7 @@
     if (!g || g.preview) return;
     const bootstrap = !g.fleet;
     if (bootstrap) {
-      g.fleet = { v: 1, ver: 1, seq: 1, trains: [], ops: {}, note: {}, autoAlloc: false, autoConfig: false };
+      g.fleet = { v: 1, ver: 1, seq: 1, trains: [], ops: {}, note: {}, autoAlloc: false, autoConfig: false, owned: [] };
       const net = g.model.net, C = net && net.C, res = g.model.results || g.model.ctxs;
       if (C) C.routes.forEach(function (rt, r) {
         const built = (CM.Agents && CM.Agents.lineBuiltYear(g.net, rt.lineId)) || CFG.START.y, by = Math.max(built, g.clock.y - 25), m0 = g.net.lines[rt.lineId] && g.net.lines[rt.lineId].model0, mdl = (m0 && MODELS.find(function (x) { return x.id === m0; })) || F.eraModel(g.mapId, by), cars = Math.min(rt.cars, mdl.max);
@@ -326,6 +370,9 @@
       });
     }
     const beforeSync = g.fleet.ver;
+    // v4.4：旧存档没有 owned 字段——按现有列车补记，城市特色车型的「已购置」状态不会丢
+    if (!Array.isArray(g.fleet.owned)) g.fleet.owned = [];
+    for (const t of g.fleet.trains) F.markOwned(g, t.model);
     if (g.fleet.autoConfig == null) g.fleet.autoConfig = false;
     if (g.fleet.autoAlloc == null) g.fleet.autoAlloc = false;
     F.sync(g);
@@ -371,6 +418,7 @@
     C.routes.forEach(function (rt, r) {
       if (rt.svc || onSvc.has(rt.lineId)) return;   // 随线配车只补全程交路
       const mdl = F.recommend(g.mapId, y, rt.kmh);
+      if (!mdl) return;   // v4.4：主干没有能跑这条速度的车型时不随线配车，由玩家手动选购车型
       for (let d = 0; d < (rt.loop ? 2 : 1); d++) {
         let short = F.floorNeed(rt) - have[r][d]; if (short <= 0) continue;
         const use = [];
@@ -419,7 +467,7 @@
     if (g.net.lines[lid] && CM.Metro.lineKmh(g.net.lines[lid]) >= 160) return [];
     return g.fleet.trains.filter(function (t) {
       const m = BY.get(t.model);
-      return t.line === lid && t.model !== F.autoModelId && !(m && m.only160);
+      return t.line === lid && t.model !== F.autoModelId && !(m && m.only160) && F.canTechUpgrade(t);
     });
   };
   // 改装报价：按当年列车价格补差价（新车型价 − 原车型价，负数按 0 计），编组节数不变
@@ -454,7 +502,7 @@
   F.staleD = function (g, lid) {
     if (!g.fleet || !g.net.lines[lid] || CM.Metro.lineKmh(g.net.lines[lid]) < 160) return [];
     if (!BY.get(F.dModelId)) return [];
-    return g.fleet.trains.filter(function (t) { return t.line === lid && t.model !== F.dModelId; });
+    return g.fleet.trains.filter(function (t) { return t.line === lid && t.model !== F.dModelId && F.canTechUpgrade(t); });
   };
   // 改装报价：按当年价格补差价（D 型 8 节 − 原车型原编组，负数按 0 计）
   F.dQuote = function (g, list) {
@@ -570,6 +618,27 @@
     g.logEvent({ tag: '运营', title: '列车扩编：' + name + ' × ' + q.n, desc: name + ' 的 ' + q.n + ' 列车在原车型上加挂车厢（增加 ' + q.added + ' 节，扩编后共 ' + q.cars + ' 节），车龄不变，补差价 ' + U.fmtMoney(q.cost) + '。' });
     changed(g); return { ok: true, n: q.n, added: q.added, cars: q.cars, cost: q.cost };
   };
+  // ---------------- v4.4 城市特色车：只能同车型补差价扩编 ----------------
+  // 与科技树升级完全分开：这里不读 F.techTarget、不换车型、不重置车龄，只按原车型价加挂车厢。
+  // 玩家手动买下的城市特色车因此可以加大编组，但不会被「升级成主干车型」，也不会触发科技树流程。
+  F.cityStaleCars = function (g, lid) {
+    if (!g.fleet || !g.net.lines[lid]) return [];
+    return g.fleet.trains.filter(function (t) { return t.line === lid && F.isCityTrain(t) && F.carsTarget(g, lid, t) > t.cars; });
+  };
+  F.upgradeCityCars = function (g, lid) {
+    const list = F.cityStaleCars(g, lid);
+    if (!list.length) return { error: '这条线路没有可以扩编的城市特色车' };
+    const q = F.carsQuote(g, list, lid), y = g.clock.y, name = g.net.lines[lid] ? g.net.lines[lid].name : '线路';
+    if (!g.econ.isFree() && !g.econ.canAffordBuild(q.cost)) return { error: '资金不足：需要 ' + U.fmtMoney(q.cost) };
+    if (q.cost > 0) g.econ.spendBuild({ construction: q.cost }, '城市特色车扩编：' + name + ' + ' + q.added + ' 节', { y: y, m: g.clock.m, d: g.clock.d }, true);
+    for (const t of list) {
+      const m = F.model(t.model), tg = F.carsTarget(g, lid, t);
+      t.cost = (t.cost || 0) + Math.max(0, F.price(g, m, tg, y) - F.price(g, m, t.cars, y));
+      t.cars = tg;
+    }
+    g.logEvent({ tag: '运营', title: '城市特色车扩编：' + name + ' × ' + q.n, desc: name + ' 的 ' + q.n + ' 列城市特色车保持原车型加挂车厢（增加 ' + q.added + ' 节，扩编后共 ' + q.cars + ' 节），车龄不变，补差价 ' + U.fmtMoney(q.cost) + '。' });
+    changed(g); return { ok: true, n: q.n, added: q.added, cars: q.cars, cost: q.cost };
+  };
   // ---------------- v3.7 科技树升级：所有城市一键升级到当前最新车型 + 线路允许的最大编组 ----------------
   // 目标：本城当年最新且能跑本线的车型；编组取「线路可跑上限」与「该车型上限」的较小值，
   // 固定编组车型（D 型）按固定节数。160 线路由 D 型接管，无人驾驶时代由全自动车接管。
@@ -585,7 +654,7 @@
     const tg = F.techTarget(g, lid);
     if (!g.fleet || !g.net.lines[lid] || !tg) return [];
     return g.fleet.trains.filter(function (t) {
-      if (t.line !== lid) return false;
+      if (t.line !== lid || !F.canTechUpgrade(t)) return false;
       if (t.model !== tg.m.id) return t.cars <= tg.cars;
       return t.cars < tg.cars;
     });
@@ -597,6 +666,7 @@
     let cost = 0, credit = 0, cars = 0, n = 0, from = Infinity, to = 0, reset = 0, expand = 0;
     if (!tg) return { n: 0, cars: 0, cost: 0, credit: 0, target: null, targetCars: 0, kinds: kinds, from: 0, to: 0, reset: 0, expand: 0 };
     for (const t of list) {
+      if (!F.canTechUpgrade(t)) continue;
       const np = F.price(g, tg.m, tg.cars, y);
       if (t.model === tg.m.id) {
         cost += Math.max(0, np - F.price(g, tg.m, t.cars, y)); expand++;
@@ -618,6 +688,7 @@
     if (!g.econ.isSandbox() && !g.econ.canAffordBuild(q.cost)) return { error: '资金不足：需要 ' + U.fmtMoney(q.cost) };
     if (q.cost > 0) g.econ.spendBuild({ construction: q.cost }, '列车升级：' + name + ' → ' + q.target.short + ' ' + q.n + ' 列（' + q.targetCars + ' 节）', { y: y, m: g.clock.m, d: g.clock.d }, true);
     for (const t of list) {
+      if (!F.canTechUpgrade(t)) continue;
       const np = F.price(g, q.target, q.targetCars, y);
       if (t.model === q.target.id) { t.cost = (t.cost || 0) + Math.max(0, np - F.price(g, q.target, t.cars, y)); t.cars = q.targetCars; }
       else { t.cost = Math.round(np); t.model = q.target.id; t.cars = q.targetCars; t.bought = g.ym(); }
@@ -641,12 +712,12 @@
   // 车辆段智能分配（v2.6.1 玩家反馈）：闲置列车一列一列分给高峰缺口比例最大的交路，只分站台放得下、速度够的车，优先运力大的车；
   // 手动调度的线路由玩家自己安排，不参与。只返回方案，不改动车队
   F.allocPlan = function (g) {
-    const needs = [], idle = g.fleet.trains.filter(function (t) { return !t.line; }).sort(function (a, b) { return F.capOf(b) - F.capOf(a); }), total = idle.length;
+    const needs = [], idle = g.fleet.trains.filter(function (t) { return !t.line && F.ownsModel(g, t.model); }).sort(function (a, b) { return F.capOf(b) - F.capOf(a); }), total = idle.length;
     for (const lid of CM.Metro.sortIds(Object.keys(g.net.lines))) {
       const o = g.fleet.ops[lid]; if (o && o.mode === 'manual') continue;
       for (const s of F.lineInfo(g, lid) || []) if (s.short > 0) needs.push({ lid: lid, svc: s.id, name: s.name, rt: s.rt, avail: s.avail, need: s.peakNeed, short: s.short, maxCars: s.maxCars, ids: [], stuck: false });
     }
-    const fit = function (t, x) { return t.cars <= x.maxCars && (x.rt.kmh <= 80 || F.model(t.model).kmh >= x.rt.kmh); };
+    const fit = function (t, x) { return t.cars <= x.maxCars && (x.rt.kmh <= 80 || F.model(t.model).kmh >= x.rt.kmh) && F.canAutoPick(g, F.model(t.model)); };
     for (;;) {
       let best = null, bs = 0;
       for (const x of needs) { if (x.short <= 0 || x.stuck) continue; const v = x.short / Math.max(1, x.need) + x.short * 1e-3; if (v > bs) { bs = v; best = x; } }
@@ -667,7 +738,12 @@
   // 分配后还差的列车：按推荐车型配齐（编组取站台允许的最长）
   F.fillCost = function (g, plan) {
     const y = g.clock.y, rows = []; let cost = 0;
-    for (const x of plan.needs) { if (x.short <= 0) continue; const m = F.recommend(g.mapId, y, x.rt.kmh), cars = Math.min(x.maxCars, m.max), c = F.price(g, m, cars, y) * x.short; rows.push({ x: x, m: m, cars: cars, n: x.short, cost: c }); cost += c; }
+    for (const x of plan.needs) {
+      if (x.short <= 0) continue;
+      const m = F.recommend(g.mapId, y, x.rt.kmh); if (!m) continue;   // v4.4：主干没有能跑这条线的车型时不补车，交给玩家手动选购
+      const cars = Math.min(x.maxCars, m.max), c = F.price(g, m, cars, y) * x.short;
+      rows.push({ x: x, m: m, cars: cars, n: x.short, cost: c }); cost += c;
+    }
     return { rows: rows, cost: cost };
   };
   F.setMode = function (g, lid, mode) {
@@ -753,7 +829,7 @@
         let gap = need - (s.avail || 0); if (gap <= 0) continue;
         const cars = Math.min(tg.cars, s.maxCars || tg.cars);
         // 车辆段里同型号、编组不超过本交路上限的空闲车
-        const idle = fl.trains.filter(function (t) { return !t.line && t.model === tg.m.id && t.cars <= (s.maxCars || 8) && (s.rt.kmh <= 80 || F.model(t.model).kmh >= s.rt.kmh); });
+        const idle = fl.trains.filter(function (t) { return !t.line && F.ownsModel(g, t.model) && t.model === tg.m.id && t.cars <= (s.maxCars || 8) && (s.rt.kmh <= 80 || F.model(t.model).kmh >= s.rt.kmh); });
         for (let i = 0; i < idle.length && gap > 0; i++) { idle[i].line = lid; idle[i].svc = s.id; gap--; moved++; lineMoved++; }
         if (gap > 0) {
           const cost = F.price(g, tg.m, cars, g.clock.y) * gap;
@@ -884,6 +960,30 @@
               done();
             }, false, 'train');
           } }, '补差价升级')));
+      }
+    }
+    // v4.4：城市特色车的补差价升级只走「同车型扩编」，与科技树升级块完全分开：不换车型、不重置车龄、不读科技树目标
+    {
+      const cl = F.cityStaleCars(g, lid);
+      if (cl.length) {
+        const q = F.carsQuote(g, cl, lid), poor = !g.econ.isFree() && !g.econ.canAffordBuild(q.cost);
+        const kinds = q.kinds.join(CM.I18n && CM.I18n.get() === 'en' ? ', ' : '、');
+        const title = '城市特色车可扩编到最多 {a} 节'.replace('{a}', q.to);
+        const desc = ('本线 {a} 列城市特色车（{b}，最短 {c} 节）：保持原车型与车龄，补差价加挂到最多 {d} 节；'
+          + '城市特色车不参与科技树升级。').replace('{a}', q.n).replace('{b}', kinds).replace('{c}', q.from).replace('{d}', q.to);
+        const confirmText = '本线 {a} 列城市特色车（共 {b} 节）将在原车型上加挂 {c} 节：补差价 {d}，车龄不变，不会换成其他车型。'
+          .replace('{a}', q.n).replace('{b}', q.cars).replace('{c}', q.added).replace('{d}', U.fmtMoney(q.cost));
+        el.appendChild(h('div', { class: 'fo-auto up-auto up-cars up-city' },
+          h('span', { class: 'grow' }, h('b', null, title), h('small', null, desc),
+            poor ? h('small', { class: 'bad' }, '资金不足：需要 ' + U.fmtMoney(q.cost)) : null),
+          h('button', { class: 'btn sm primary', disabled: poor ? true : null, 'data-tip': '只加挂车厢，不换车型、不重置车龄，也不触发科技树升级', onclick: function () {
+            self.confirm('扩编本线城市特色车？', confirmText, '补差价扩编', function () {
+              const r = F.upgradeCityCars(g, lid);
+              if (r.error) { self.toast(r.error, 'bad'); return; }
+              sfx('trainBuy'); self.toast('已为 {a} 列城市特色车加挂 {b} 节，补差价 {c}'.replace('{a}', r.n).replace('{b}', r.added).replace('{c}', U.fmtMoney(r.cost)), 'good');
+              done();
+            }, false, 'train');
+          } }, '补差价扩编')));
       }
     }
     if (!info.length) { el.appendChild(h('div', { class: 'note' }, '线路运营后在这里安排列车。')); return; }
@@ -1162,7 +1262,8 @@
     const shop = F.buyList(g, lid), list = shop.list, soon = shop.soon, col = lineColor(g, lid);
     // 站台长度兜底：没有交路或老存档缺字段时按 8 节算，绝不把 NaN 传进购买流程
     maxCars = Math.max(1, Math.min(8, Math.floor(+maxCars) || 8));
-    let sel = list[0], cars = Math.min(maxCars, sel ? sel.max : 6), n = 1;
+    // v4.4：默认选中的必须是主干 / 160 支线车型，绝不自动选中城市特色车型
+    let sel = shop.defaultModel || list[0], cars = Math.min(maxCars, sel ? sel.max : 6), n = 1;
     const gap = function () { if (!lid) return F.allocPlan(g).unmet; const s = (F.lineInfo(g, lid) || []).find(function (x) { return x.id === svc; }); return s ? s.short : 0; };
     const box = h('div');
     // 车型卡片：未开放的车型变灰、不能选，标出开放年份
@@ -1170,6 +1271,8 @@
       const kids = [h('span', { class: 'fo-pic', html: F.sideSVG(m, col, 168) }), h('b', null, F.nameOf(m)),
         lock ? h('span', { class: 'fo-lock' }, ic('lock', 12), h('span', null, m.from + ' 年开放'), h('span', null, '还有 ' + (m.from - y) + ' 年'))
           : h('span', { class: 'tiny muted' }, (m.maps ? '本市车型' : '通用车型') + ' · ' + m.from + (m.to < 9999 ? '–' + m.to : ' 年起')),
+        // v4.4：城市特色车型要先在购车窗口买过，才会被自动配置 / 智能分配启用
+        m.maps && !F.ownsModel(g, m) ? h('span', { class: 'tiny muted' }, '尚未购置：买过之后才参与自动配置') : null,
         h('span', { class: 'tiny' }, '每节 ' + m.cap + ' 人 · ' + m.kmh + ' km/h · 运营成本 ×' + m.ops.toFixed(2)),
         h('span', { class: 'tiny muted' }, F.descOf(m))];
       if (lock) return h('div', { class: 'fo-model locked' }, kids);
