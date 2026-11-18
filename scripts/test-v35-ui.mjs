@@ -109,7 +109,7 @@ try {
     if (r.exceptionDetails) throw Error(r.exceptionDetails.exception?.description || r.exceptionDetails.text);
     return r.result?.value;
   };
-  const shot = async name => { const r = await send('Page.captureScreenshot', { format: 'png' }); await fs.writeFile(path.join(root, 'shots', name + '.png'), Buffer.from(r.data, 'base64')); };
+  const shot = async name => { const r = await send('Page.captureScreenshot', { format: 'png' }); const dir = path.resolve(fileURLToPath(new URL('..', import.meta.url)), 'shots'); await fs.mkdir(dir, { recursive: true }); await fs.writeFile(path.join(dir, name + '.png'), Buffer.from(r.data, 'base64')); };
   const until = async (exp, ms = 120000) => { const t0 = Date.now(); while (Date.now() - t0 < ms) { if (await E(exp)) return; await delay(150); } throw Error('Wait timeout: ' + exp + '\n' + errors.join('\n')); };
 
   await send('Runtime.enable'); await send('Page.enable');

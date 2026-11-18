@@ -3846,3 +3846,15 @@ body.ops-open #feed > :not(#toasts) { display: none; }
 /* 新建线路弹窗里的「不使用番号」勾选项 */
 .lnp-nonum { display: flex; align-items: center; gap: 8px; margin: 2px 0 8px; font-size: 12px; cursor: pointer; user-select: none; }
 .lnp-nonum input { width: 15px; height: 15px; margin: 0; accent-color: var(--accent); }
+
+/* ===== v4.1 站台规模下限：不达标的档位置灰、不可选 ===== */
+/* 工具条（绘线 / 建站）与车站详情的规模按钮共用：低于「当前运行列车最大编组」对应的档位直接禁用 */
+.seg-ctl button:disabled,
+.seg-ctl button.off {
+  color: var(--muted); opacity: .42; cursor: not-allowed;
+  background: transparent; box-shadow: none;
+}
+.seg-ctl button:disabled:hover,
+.seg-ctl button.off:hover { background: transparent; }
+.seg-ctl button.off.on { background: transparent; box-shadow: none; }
+.size-min-note { margin: 5px 0 0; font-size: 11.5px; line-height: 1.4; color: var(--muted); }

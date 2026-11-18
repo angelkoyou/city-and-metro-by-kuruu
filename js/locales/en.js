@@ -8533,3 +8533,22 @@ Object.assign(window.CM.I18N_EN, {
 Object.assign(window.CM.I18N_EN, {
   "操作": "Actions",
 });
+
+// —— v4.1 站台规模按运行列车动态决定 ——
+Object.assign(window.CM.I18N_EN, {
+  "本线当前运行 {v0} 节编组的列车，至少要{v1}，这个规模放不下": "This line currently runs {v0}-car formations, so {v1} or larger is required - this size is too short",
+  "本站经过的线路当前运行 {v0} 节编组的列车：规模不能低于{v1}，更小的站台放不下这列车": "A line through this station currently runs {v0}-car formations: the size cannot be below {v1}, smaller platforms cannot take that train",
+  "本站经过的线路使用 160 轨道：规模不能低于{v0}，更小的站台放不下这列车": "A line through this station uses 160 km/h track: the size cannot be below {v0}, smaller platforms cannot take that train",
+  "本线当前运行 {v0} 节编组的列车，新建或接轨的站台需要{v1}及以上：「{v2}」当前为{v3}（共 {v4} 座规模不足）。可在工具条把站台规模调到{v1}，或先换用小编组列车。": "This line currently runs {v0}-car formations, so new or connecting platforms must be {v1} or larger: \u201c{v2}\u201d is currently {v3} ({v4} platforms are too small). Set the platform size to {v1} in the toolbar, or switch to shorter trains first.",
+});
+
+// —— v4.1 更新公告 ——
+Object.assign(window.CM.I18N_EN, {
+  "站台规模按运行列车动态决定": "Platform size follows the trains in service",
+  "站台规模的下限不再绑定某条线路，也不再读线路的静态编组或沿线站台：改为看「这条线当前时段实际投入的列车」，取其中最大的编组。": "The minimum platform size is no longer tied to a particular line, and the line's static formation or existing platforms are no longer read: the limit now looks at the trains a line actually runs in the current time band and takes the longest formation among them.",
+  "一条线在跑 8 节编组，新建或接轨的站台就必须大型及以上；只跑 4 节时可以建小型站，建设费省下来。": "A line running 8-car formations forces every new or connecting platform to be Large or bigger; a line running only 4-car trains may build small stations and save the construction cost.",
+  "换乘站按所有经过线路里最大的需求算：任一条线跑长编组，整站规模就不能降。": "Interchange stations use the largest requirement among all the lines through them: if any one line runs long formations, the whole station cannot be reduced.",
+  "手动调度把某条线本时段设成 0 列、或这条线还没有配属车辆时视为停运，这项限制随之取消；恢复投入后自动回来。": "Setting a line to 0 trains for the current band in manual dispatch, or having no trains assigned at all, counts as out of service and lifts the limit until service resumes.",
+  "界面把不达标的规模直接置灰、点不动，提示里写明「本线当前运行 N 节编组，至少要X」，不再等确认建设时才弹提示拦人。": "Sizes below the limit are greyed out and cannot be clicked, with a tooltip saying how many cars the line runs and the minimum size, instead of blocking you with a toast when confirming the build.",
+  "买卖列车、调动交路、改编组或时段切换后，工具条与车站页的下限立即重算；编组仍超过站台的列车照旧列为「未上线」。": "Buying, selling, reassigning or re-consisting trains, or moving into another time band, recomputes the limit immediately in the toolbar and the station page; trains still longer than the platforms remain listed as Not in service.",
+});

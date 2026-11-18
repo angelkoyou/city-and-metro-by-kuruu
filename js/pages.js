@@ -644,8 +644,17 @@
             else self.toast('已在草案中把「' + s.name + '」补建为正式站：补交 ' + U.fmtMoney(pay) + '，确认建设后生效', 'good');
           } }, ic('hammer', 14), '补建为正式站')))));
     }
+    // v4.1：本站的规模下限按「所有经过线路里当前正在运行的最大编组」算；没有运行列车就没有下限。
+    // 160 轨道另有「大型及以上」的硬要求（v3.0 规则），这里一并折进下限，界面与编译校验保持一致。
+    // 换乘组整组同规模，所以把组内各站的线路合起来取最大。
+    const grpIds = g.stationGroup ? g.stationGroup(id) : [id], grpLids = [];
+    for (const gid of grpIds) for (const lid of M.stationLines(net, gid)) if (grpLids.indexOf(lid) < 0) grpLids.push(lid);
+    const reqCars = (CM.Fleet && CM.Fleet.reqCars) ? CM.Fleet.reqCars(g, grpLids) : null;
+    let minSize = M.formationSize(reqCars || 0);
+    if (grpLids.some(function (lid) { const L = net.lines[lid]; return L && M.lineKmh(L) >= 160; }) && (!minSize || M.sizeRank(minSize) < M.sizeRank('L'))) minSize = 'L';
     b.appendChild(h('div', { class: 'field' }, h('label', null, '站厅规模'), self.sizeCards({
       type: s.type, cur: s.size, base: official ? official.size : null, rebuild: !!official && official.type !== s.type,
+      minSize: minSize, minCars: reqCars,
       onPick: function (sz) {
         const c = latest(); if (!c || c.size === sz) return;
         const targets = g.stationGroupExpand ? g.stationGroupExpand([id]) : [id];

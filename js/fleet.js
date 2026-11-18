@@ -497,6 +497,45 @@
     if (m.fixedCars) return t.cars;                   // 固定编组车型（如 D 型无人列车）不能加挂
     return Math.min(F.lineCars(g, lid), m.max || 8);
   };
+  // ---------------- v4.1：站台规模的动态下限 ----------------
+  // 一条线路上的新站台至少要建多大，只看「当前时段实际投入」的列车，不再读线路静态编组或沿线站台：
+  //   · 手动调度把本时段设成 0 列、开出的交路没有配属车辆 → 视为停运，返回 null（不设下限）；
+  //   · 编组超过沿线站台、或速度不够的列车不在 fp.units 里（与「不能上线」判定同源），不参与统计；
+  //   · 同一时段投入多列时取其中最大的编组——调度随时可能派出最长的那一列。
+  const periodOf = function (g) {
+    const m = g.model, mm = (g.clock && g.clock.minute) || 0;
+    return m && m.hourPeriod ? m.hourPeriod[Math.floor(mm / 60) % 24] : 0;
+  };
+  F.periodOf = periodOf;
+  F.runCars = function (g, lid) {
+    if (!g || !g.fleet || !lid) return null;
+    const net = g.model && g.model.net; if (!net || !net.C) return null;
+    const plan = F.plan(g, net); if (!plan) return null;
+    const C = net.C, p = periodOf(g);
+    let best = 0;
+    C.routes.forEach(function (rt, r) {
+      if (rt.lineId !== lid) return;
+      const fp = plan[r]; if (!fp) return;
+      const nd = rt.loop ? 2 : 1;
+      for (let d = 0; d < nd; d++) {
+        const units = fp.units[d] || [];
+        if (!units.length) continue;
+        // 本时段投入的列车数：手动模式取设定值（不超过配属数），自动模式按配属数并受时段最低服务水平约束
+        const set = fp.manual && fp.manual[d] ? fp.manual[d][p] : null;
+        const n = Math.min(set == null ? fp.avail[d] : set, fp.avail[d]);
+        if (!(n > 0)) continue;
+        for (const u of units) if (u.cars > best) best = u.cars;
+      }
+    });
+    return best || null;
+  };
+  // 多条线路一起看：取最大需求。站台规模是车站级属性（一个 size 对所有经过的线路生效），
+  // 所以只要有一条线在跑长编组，这座车站的下限就按那条线来。
+  F.reqCars = function (g, lids) {
+    let cars = 0;
+    for (const lid of (lids || [])) { const c = F.runCars(g, lid); if (c && c > cars) cars = c; }
+    return cars || null;
+  };
   // 本线可扩编的列车：160 轨道只认 D 型车，那条线由 D 型升级处理，不在这里重复出现
   F.staleCars = function (g, lid) {
     if (!g.fleet || !g.net.lines[lid] || CM.Metro.lineKmh(g.net.lines[lid]) >= 160) return [];

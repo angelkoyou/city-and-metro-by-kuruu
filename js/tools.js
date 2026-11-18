@@ -241,34 +241,92 @@
   Tools.prototype.siteCheck = function (w) { return w.portal ? { ok: true } : M.checkSite(this.game().city, w.x, w.y, this.buildType); };
   // reserved：建预留站（只征地、不建站台，但可以接轨）。建站与绘线两条路径共用同一个选项
   Tools.prototype.stationOpts = function (w, reserved) { const o = { size: this.stationSize, type: this.buildType }; if (w.portal) o.portal = w.portal; if (reserved) o.reserved = 1; return o; };
-  // v3.4：新建 / 延伸轨道时的站台规模门槛。
-  // 新线按「新站规模」确定编组；既有线按沿线最小站台的当前编组（6 节或 8 节）。
-  // 6 节编组要求新建站与连接换乘的站台为中型及以上，8 节要求大型及以上；不满足就返回说明，调用方阻止建设。
-  Tools.prototype.platformGate = function (net, lid, from, target, opts) {
-    const mc = CFG.metro, created = !(lid && net.lines[lid]);
-    const cars = created ? ((mc.carsBySize && mc.carsBySize[opts.size]) || 0) : M.formationCars(net, lid);
-    // 新线按工具条上选的速度判断；既有线看它当前的速度。160 轨道必须大型及以上，与编组无关
-    const is160 = created ? (this.newLineSpeed >= 160) : (M.lineKmh(net.lines[lid]) >= 160);
-    if (!is160 && !(cars >= 6)) return null;
-    const list = [], add = function (sid) { const s = sid && net.stations[sid]; if (!s) return; if (!lid || M.stationLines(net, sid).indexOf(lid) < 0) list.push(s); };
-    add(from);
-    if (target) add(target); else list.push({ size: opts.size, name: '新站' });
-    const r = M.formationShort(net, is160 ? 8 : cars, list);
-    if (r && is160) r.is160 = true;
-    return r;
+  // v3.4 / v4.1：新建 / 延伸轨道时的站台规模门槛。
+  // v4.1 起不再读线路静态编组或沿线站台：一条线路的下限由 Fleet.runCars 给出，即「当前时段实际投入的
+  // 列车里最大的编组」，停运（手动设 0 列 / 没有配属车辆）时没有下限。一座车站涉及多条线路时取最大需求
+  // ——站台规模是车站级属性，任一条线跑长编组就要求大站台。
+  // 下限：{ cars, need, is160 }；没有运行列车且不是 160 轨道时返回 null（不设下限）
+  // extra160：新线还没落到 net.lines 里，160 只能按工具条上选的运行速度判断
+  Tools.prototype.gateInfo = function (net, lids, extra160) {
+    const F = CM.Fleet, g = this.game();
+    let cars = 0, is160 = !!extra160;
+    for (const lid of (lids || [])) {
+      const L = lid && net.lines[lid]; if (!L) continue;
+      if (M.lineKmh(L) >= 160) is160 = true;                      // 160 轨道只允许大型及以上站台（v3.0 规则保留）
+      const c = F && F.runCars ? F.runCars(g, lid) : 0;
+      if (c && c > cars) cars = c;
+    }
+    if (is160) cars = Math.max(cars, 8);
+    if (cars < 6) return null;
+    return { cars: cars, need: M.formationSize(cars), is160: is160 };
   };
-  // 在既有轨道上插站（含建站工具点轨道、绘线从轨道开始）：新站同样要满足这条线的编组门槛
+  // 工具条用：当前建造上下文的下限（绘线看所选线路与接轨站，建站看悬停的轨道）
+  Tools.prototype.buildReq = function () {
+    const net = this.net();
+    let lids = null, extra160 = false;
+    if (this.tool === 'line') {
+      // 工具条上的规模管的是「这次要建的新站」，只按正在延伸的那条线算；
+      // 接轨的换乘站由确认建设时的门槛单独检查
+      lids = (this.lineChoice !== 'new' && net.lines[this.lineChoice]) ? [this.lineChoice] : [];
+      extra160 = !lids.length && this.newLineSpeed >= 160;
+    } else if (this.tool === 'station' && this.hover && this.hover.kind === 'seg') {
+      const sg = net.segments[this.hover.id];
+      if (sg) { lids = [sg.line]; for (const c of M.coTrackSegs(net, sg)) { const o = net.segments[c.id]; if (o) lids.push(o.line); } }
+    }
+    return lids ? this.gateInfo(net, lids, extra160) : null;
+  };
+  // 悬停换了对象（进出一条长编组线路的轨道）时，下限可能变：只有真的变了才重绘工具条，
+  // 避免鼠标一动就重建 DOM
+  Tools.prototype.syncReq = function () {
+    const r = this.buildReq(), k = r ? r.cars : '';
+    if (k === this._reqKey) return;
+    this._reqKey = k;
+    if (this.ui && this.ui.renderToolOpts) this.ui.renderToolOpts();
+  };
+  Tools.prototype.platformGate = function (net, lid, from, target, opts) {
+    const created = !(lid && net.lines[lid]);
+    const extra160 = created && this.newLineSpeed >= 160;
+    let cars = 0, rank = -1, is160 = false;
+    const seen = new Set(), bad = [];
+    // 每座车站各按「经过它的线路」算下限：新站只看正在建的这条线，接轨的换乘站看它自己的所有线路
+    const check = function (obj, sid) {
+      const lids = [];
+      if (lid && net.lines[lid]) lids.push(lid);
+      if (sid) for (const x of M.stationLines(net, sid)) if (lids.indexOf(x) < 0) lids.push(x);
+      const gi = this.gateInfo(net, lids, extra160);
+      if (!gi) return;
+      if (gi.cars > cars) cars = gi.cars;
+      if (gi.is160) is160 = true;
+      if (gi.need && M.sizeRank(gi.need) > rank) rank = M.sizeRank(gi.need);
+      if (M.sizeShort(obj.size, gi.need) && !seen.has(sid || 'new')) { seen.add(sid || 'new'); bad.push(obj); }
+    }.bind(this);
+    const add = function (sid) {
+      const s = sid && net.stations[sid]; if (!s) return;
+      // 老线延长时，已在本线上的车站不改站台规模，只检查接轨的换乘站
+      if (!lid || !net.lines[lid] || M.stationLines(net, sid).indexOf(lid) < 0) check(s, sid);
+    };
+    add(from);
+    if (target) add(target); else check({ size: opts.size, name: '新站' }, null);
+    if (!bad.length) return null;
+    const need = rank >= 0 ? (CFG.metro.sizes || ['S', 'M', 'L', 'XL'])[rank] : null;
+    return { cars: cars, need: need, bad: bad, is160: is160 };
+  };
+  // 在既有轨道上插站（含建站工具点轨道、绘线从轨道开始）：新站同样要满足这条线的下限，
+  // 共用这段轨道的线路（共线运营）一起算。
   Tools.prototype.splitGate = function (net, segId, opts) {
     const seg = net.segments[segId]; if (!seg) return null;
-    const is160 = seg.line && net.lines[seg.line] && CM.Metro.lineKmh(net.lines[seg.line]) >= 160;
-    const r = M.formationShort(net, is160 ? 8 : M.formationCars(net, seg.line), [{ size: opts.size, name: '新站' }]);
-    if (r && is160) r.is160 = true;
+    const lids = [seg.line];
+    for (const c of M.coTrackSegs(net, seg)) { const o = net.segments[c.id]; if (o) lids.push(o.line); }
+    const gi = this.gateInfo(net, lids);
+    if (!gi) return null;
+    const r = M.formationShort(net, gi.cars, [{ size: opts.size, name: '新站' }]);
+    if (r && gi.is160) r.is160 = true;
     return r;
   };
   Tools.prototype.platformGateTip = function (r) {
     const mc = CFG.metro, b = r.bad[0], name = b.name || '新站', cur = b.size ? mc.sizeName[b.size] : '—', n = r.bad.length;
     if (r.is160) return '160 轨道要求新建或连接换乘的站台为' + mc.sizeName[r.need] + '及以上：「' + name + '」当前为' + cur + '（共 ' + n + ' 座规模不足）。请先升级站台规模，或改用更低编组的线路。';
-    return r.cars + ' 节编组的轨道要求新建或连接换乘的站台为' + mc.sizeName[r.need] + '及以上：「' + name + '」当前为' + cur + '（共 ' + n + ' 座规模不足）。请先升级站台规模，或改用更低编组的线路。';
+    return '本线当前运行 ' + r.cars + ' 节编组的列车，新建或接轨的站台需要' + mc.sizeName[r.need] + '及以上：「' + name + '」当前为' + cur + '（共 ' + n + ' 座规模不足）。可在工具条把站台规模调到' + mc.sizeName[r.need] + '，或先换用小编组列车。';
   };
   // 建站悬停：按住 Ctrl（或打开工具坞的「预留」开关）时，说明这是一座预留站以及要花多少钱、以后怎么补建
   Tools.prototype.reservedTip = function (w) {
@@ -369,6 +427,7 @@
         }
       }
     } else if (this.tool === 'station') {
+      this.syncReq();   // v4.1：悬停到的轨道所属线路变了，工具条的规模下限跟着变
       if (seg) {
         const rsvIns = !!(this.ctrlDown || this.rsvNext);
         tip = rsvIns ? { title: '在轨道上插入预留站', lines: ['预留站可以接轨，但列车通过不停靠', '建筑费与维护费为正式站的 1/5，之后可补建为正式站'] }

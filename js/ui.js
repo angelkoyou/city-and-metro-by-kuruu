@@ -608,7 +608,7 @@
       self.toast(t.text, t.kind, t.offer ? { label: '查看挑战', fn: go('active') } : (t.ppp ? { label: '查看合同', fn: go('ppp') } : (t.fleet ? { label: '列车运营', fn: function () { self.openObj('line', t.fleet, 'ops'); } } : (t.models ? { label: '查看车型', fn: function () { self.openPage('fleet', null, { root: true }); } } : (t.fare ? { label: '调整票价', fn: function () { self.openPage('finance', 'ov', { root: true }); } } : undefined)))));
     });
     // 车队变化（v2.5）：正在看的线路页与车队页随之刷新
-    g.on('fleet', function () { const top = self.stack[self.stack.length - 1]; if (top && (top.kind === 'line' || top.kind === 'fleet')) self.rerenderPage(); else if (self.opsApp) self.opsApp.refresh(); });
+    g.on('fleet', function () { const top = self.stack[self.stack.length - 1]; if (top && (top.kind === 'line' || top.kind === 'fleet' || top.kind === 'station')) self.rerenderPage(); else if (self.opsApp) self.opsApp.refresh(); self.renderToolOpts(); });   // v4.1：站台规模下限随车队变化，工具条与车站页一起刷新
     g.on('draft', function () { self.lastDraftChange = performance.now(); self.tools.syncDraft(); self.syncSelection(); self.renderDraftbar(); self.renderToolOpts(); self.refreshObjectPage(); if (self.opsApp) self.opsApp.refresh(); });
     g.on('drafts', function () { self.renderDraftbar(); self.refreshObjectPage(); });
     g.on('draftLive', function () { self.lastDraftChange = performance.now(); });
@@ -693,6 +693,9 @@
       }
       for (const f of this.live) { try { f(); } catch (e) { /* 页面已变化 */ } }
       if (CM.Stats && CM.Stats.isOpen()) CM.Stats.tick();
+      // v4.1：时段切换会改变手动调度的投入数，站台规模下限跟着变，工具条要重算（键里也带时段，没变不会重建）
+      const per = CM.Fleet && CM.Fleet.periodOf ? CM.Fleet.periodOf(g) : 0;
+      if (this._lastPeriod !== per) { this._lastPeriod = per; this.renderToolOpts(); }
     }
     if (force || now - this.lastSlow > 1000) {
       this.lastSlow = now;
@@ -1271,14 +1274,26 @@
     const lineColor = colorLine ? colorLine.color : T.nextLineColor(true);
     const nMulti = this.multi ? this.multi.stations.size + this.multi.segs.size : 0;
     const CB = CM.Cheat, cheat = CB && CB.on() ? CB.of(g) : null;
+    // v4.1：站台规模下限跟着「当前时段正在运行的列车」走，所以车队版本与时段也进 key——
+    // 买卖 / 调动列车、改编组、时段切换后工具条自动重绘（置灰状态不会停在旧结果上）
+    const req = T.buildReq ? T.buildReq() : null;
+    const per = CM.Fleet && CM.Fleet.periodOf ? CM.Fleet.periodOf(g) : 0;
     const key = [T.tool, T.chain, T.lineChoice, T.buildType, T.stationSize, T.rsvNext, T.curveMode, T.newLineSpeed, g.draft ? g.draft.ver : 0, g.clock.y, gridOn, snapOn, lineColor, nMulti, T.meas.pts.length,
-      T.popDens, T.popR, T.facKind, cheat ? cheat.totalPop + ':' + cheat.totalFac + ':' + (cheat.readout ? cheat.readout.at : 0) : ''].join('|');
+      g.fleet ? g.fleet.ver : 0, per, req ? req.need : '', T.popDens, T.popR, T.facKind, cheat ? cheat.totalPop + ':' + cheat.totalFac + ':' + (cheat.readout ? cheat.readout.at : 0) : ''].join('|');
     if (key === this._toKey && !el.classList.contains('hidden')) return;
     this._toKey = key;
     const self = this, mc = CFG.metro, y = g.clock.y;
+    // o[3] 默认是小圆点的颜色；也可以传 { dot, disabled }：disabled 的选项直接置灰、不可点击（v4.1）
     const segc = function (cur, opts, set) {
       const c = h('div', { class: 'seg-ctl sm' });
-      for (const o of opts) c.appendChild(h('button', { class: cur === o[0] ? 'on' : '', 'data-tip': o[2] || null, 'data-silent': '1', onclick: function () { if (cur !== o[0]) { set(o[0]); snd('soft'); self.renderToolOpts(); } } }, o[3] ? h('span', { class: 'dot', style: { background: o[3] } }) : null, o[1]));
+      for (const o of opts) {
+        const meta = o[3] && typeof o[3] === 'object' ? o[3] : { dot: o[3] };
+        const off = !!meta.disabled;
+        const attrs = { class: (cur === o[0] ? 'on' : '') + (off ? ' off' : ''), type: 'button', 'data-tip': o[2] || null, 'data-silent': '1',
+          onclick: function () { if (off) return; if (cur !== o[0]) { set(o[0]); snd('soft'); self.renderToolOpts(); } } };
+        if (off) { attrs.disabled = true; attrs['aria-disabled'] = 'true'; }
+        c.appendChild(h('button', attrs, meta.dot ? h('span', { class: 'dot', style: { background: meta.dot } }) : null, o[1]));
+      }
       return c;
     };
     const grp = function (label, ctl) { return h('div', { class: 'to-grp' }, h('span', { class: 'to-k' }, label), ctl); };
@@ -1292,7 +1307,20 @@
       return [h('span', { class: 'to-sep' }), h('div', { class: 'seg-ctl sm' }, b)];
     };
     const typeCtl = grp('方式', segc(T.buildType, [['underground', '地下', '造价最高；越江为隧道，可穿越山体与保护建筑'], ['surface', '地面', '造价最低；越江为桥梁，两条地面线不能平交'], ['elevated', '高架', '造价居中；越江为桥梁']], function (v) { T.buildType = v; }));
-    const sizeCtl = function (label) { return grp(label, segc(T.stationSize, (mc.sizes || ['S', 'M', 'L', 'XL']).map(function (sz) { return [sz, mc.sizeName[sz], mc.sizeName[sz] + '车站：' + U.fmtInt(mc.stationCap[sz]) + ' 人次/时 · 编组上限 ' + mc.carsBySize[sz] + ' 节 · 约 ' + U.fmtMoney(M.stationCost(T.buildType, sz, y))]; }), function (v) { T.stationSize = v; })); };
+    // v4.1：低于下限的规模直接置灰、不可点击（不再靠建站时弹提示拦人）；
+    // 选中的档位若已不达标（比如刚给这条线换了长编组列车），自动抬到下限
+    const sizeCtl = function (label) {
+      const ord = mc.sizes || ['S', 'M', 'L', 'XL'], need = req && req.need ? req.need : null;
+      if (need && M.sizeShort(T.stationSize, need)) T.stationSize = need;
+      const opts = ord.map(function (sz) {
+        const off = !!(need && M.sizeShort(sz, need));
+        const tip = off
+          ? '本线当前运行 ' + req.cars + ' 节编组的列车，至少要' + mc.sizeName[need] + '，这个规模放不下'
+          : mc.sizeName[sz] + '车站：' + U.fmtInt(mc.stationCap[sz]) + ' 人次/时 · 编组上限 ' + mc.carsBySize[sz] + ' 节 · 约 ' + U.fmtMoney(M.stationCost(T.buildType, sz, y));
+        return [sz, mc.sizeName[sz], tip, off ? { disabled: true } : null];
+      });
+      return grp(label, segc(T.stationSize, opts, function (v) { T.stationSize = v; }));
+    };
     this._replacingToolOpts = true;
     try { el.innerHTML = ''; } finally { this._replacingToolOpts = false; }
     if (T.tool === 'line') {
@@ -2436,8 +2464,19 @@
         h('div', { class: 'size-hero-meta' }, '编组上限 ' + mc.carsBySize[sz] + ' 节 · 运营 ' + U.fmtMoney(CFG.ops.stationDaily[sz] * oi) + '/日'));
       if (CM.I18n) CM.I18n.localize(hero);
     };
-    for (const sz of ord) seg.appendChild(h('button', { class: opts.cur === sz ? 'on' : '', type: 'button', 'aria-pressed': opts.cur === sz ? 'true' : 'false', onclick: function () { if (opts.cur !== sz) opts.onPick(sz); } }, mc.sizeName[sz]));
+    // v4.1：低于本站下限的规模置灰、不可选（原来只在编译冲突里提示，容易事后才发现）
+    const minSz = opts.minSize || null;
+    const why = opts.minCars ? ('本站经过的线路当前运行 ' + opts.minCars + ' 节编组的列车') : '本站经过的线路使用 160 轨道';
+    const minNote = minSz ? (why + '：规模不能低于' + mc.sizeName[minSz] + '，更小的站台放不下这列车') : '';
+    for (const sz of ord) {
+      const off = !!(minSz && M.sizeShort(sz, minSz));
+      const attrs = { class: (opts.cur === sz ? 'on' : '') + (off ? ' off' : ''), type: 'button', 'aria-pressed': opts.cur === sz ? 'true' : 'false',
+        onclick: function () { if (off) return; if (opts.cur !== sz) opts.onPick(sz); } };
+      if (off) { attrs.disabled = true; attrs['aria-disabled'] = 'true'; attrs['data-tip'] = minNote; }
+      seg.appendChild(h('button', attrs, mc.sizeName[sz]));
+    }
     wrap.appendChild(seg);
+    if (minNote) wrap.appendChild(h('div', { class: 'size-min-note' }, minNote));
     wrap.appendChild(hero);
     drawHero();
     // 升级前后对比与本次费用

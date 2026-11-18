@@ -77,13 +77,13 @@ try {
   await until('!!document.querySelector(".card.news")');
 
   const info = await E('(()=>{const card=document.querySelector(".card.news");const vs=[...card.querySelectorAll(".news-v")].map(v=>v.textContent.trim());const secs=[...card.querySelectorAll(".news-list .sec")];return {vs,n:CM.NEWS.length,title:card.querySelector("h2").textContent.trim(),sub:card.querySelector(".card-head .tiny").textContent.trim(),lead:(card.querySelector(".news-lead")||{}).textContent||"",items:card.querySelectorAll(".news-b li").length,firstItems:secs[0]?secs[0].querySelectorAll("li").length:0,firstOpen:secs[0]?secs[0].classList.contains("open"):false,lastItems:secs.length?secs[secs.length-1].querySelectorAll("li").length:0,lastText:secs.length?secs[secs.length-1].textContent:""}})()');
-  assert.equal(info.n, 21, '公告应保留 21 个版本');
-  assert.equal(info.vs.length, 21, '界面应列出全部版本：' + info.vs.join(','));
-  assert.equal(info.vs[0], 'V4.0', '最新版本在最上面');
+  assert.equal(info.n, 22, '公告应保留 22 个版本');
+  assert.equal(info.vs.length, 22, '界面应列出全部版本：' + info.vs.join(','));
+  assert.equal(info.vs[0], 'V4.1', '最新版本在最上面');
   assert.equal(info.vs[info.vs.length - 1], 'V2.0', '最早的 2.0 公告仍在最后');
-  assert.deepEqual(info.vs, ['V4.0', 'V3.9', 'V3.8', 'V3.7', 'V3.6', 'V3.5', 'V3.4', 'V3.3', 'V3.2', 'V3.1', 'V3.0', 'V2.9', 'V2.8', 'V2.7', 'V2.6', 'V2.5', 'V2.4', 'V2.3', 'V2.2', 'V2.1', 'V2.0'], '版本必须严格倒序');
+  assert.deepEqual(info.vs, ['V4.1', 'V4.0', 'V3.9', 'V3.8', 'V3.7', 'V3.6', 'V3.5', 'V3.4', 'V3.3', 'V3.2', 'V3.1', 'V3.0', 'V2.9', 'V2.8', 'V2.7', 'V2.6', 'V2.5', 'V2.4', 'V2.3', 'V2.2', 'V2.1', 'V2.0'], '版本必须严格倒序');
   assert.match(info.title, /更新公告/);
-  assert.match(info.sub, /当前版本 V4\.0/, '页头显示当前版本：' + info.sub);
+  assert.match(info.sub, /当前版本 V4\.1/, '页头显示当前版本：' + info.sub);
   assert.match(info.lead, /历史公告全部保留/, '页头说明历史公告保留');
   assert.equal(info.items, 6, '默认只构建最新版（其余按需展开）：' + info.items);
   assert.equal(info.firstItems, 6, '最新版 6 条');
@@ -100,7 +100,7 @@ try {
   assert.ok(opened.h > 40, '历史版本展开后应有内容高度：' + opened.h);
   assert.match(opened.text, /广州、杭州、香港、东京、台北和青湾教程/, '2.0 正文原样保留');
 
-  await shot('v40-news-zh');
+  await shot('v41-news-zh');
 
   // 英文界面：整页不得残留汉字
   await E('CM.I18n.apply("en");true');
@@ -109,12 +109,12 @@ try {
   assert.equal(en.han, false, '英文公告页不得残留汉字');
   assert.match(en.head, /What's New/);
   assert.ok(en.first.length > 20, '英文正文应有内容');
-  await shot('v40-news-en');
+  await shot('v41-news-en');
 
   await E('CM.I18n.apply("zh-CN");true');
   await E('CM.ui.closeScreen();true');
   assert.deepEqual(errors, [], '不应有 JS 异常：' + errors.join('\n'));
-  console.log('ALL PASS v4.0 UI 更新公告：21 个版本 / 最新展开 / 历史可展开 / 英文整页无汉字');
+  console.log('ALL PASS v4.1 UI 更新公告：22 个版本 / 最新展开 / 历史可展开 / 英文整页无汉字');
 } finally {
   try { ws && ws.close(); } catch { }
   try { edge.kill(); } catch { }

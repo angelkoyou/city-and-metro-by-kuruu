@@ -806,8 +806,9 @@
     return null;
   };
   // ---------------- v3.4：轨道编组与站台规模 ----------------
-  // 一条线路当前能跑的最长编组，由沿线最小的站台决定（小型 4、中型 6、大型及以上 8）。
-  // 新建或延伸轨道时用它判断「这条轨道是几节编组」，再要求新站 / 换乘站达到对应规模。
+  // 一条线路「物理上」能跑的最长编组，由沿线最小的站台决定（小型 4、中型 6、大型及以上 8）。
+  // 编译运营交路与「编组超过站台、不能上线」的判定用它。
+  // v4.1：建造时的站台规模下限不再用它（改为按当前运行的列车，见 Fleet.runCars / Tools.gateInfo）。
   M.formationCars = function (net, lid) {
     const tp = M.lineTopo(net, lid), mc = CFG.metro;
     let cars = 0;
@@ -823,6 +824,16 @@
     const sizes = CFG.metro.sizes || ['S', 'M', 'L', 'XL'];
     const key = cars >= 8 ? 'L' : cars >= 6 ? 'M' : null;
     return key && sizes.indexOf(key) >= 0 ? key : null;
+  };
+  // v4.1：规模档位序号（小型 0、中型 1、大型 2…），未知规模返回 -1；界面置灰与校验共用
+  M.sizeRank = function (size) {
+    const i = (CFG.metro.sizes || ['S', 'M', 'L', 'XL']).indexOf(size);
+    return i;
+  };
+  // 规模 size 是否低于下限 need（need 为空表示不设下限）
+  M.sizeShort = function (size, need) {
+    if (!need) return false;
+    return M.sizeRank(size) >= 0 && M.sizeRank(size) < M.sizeRank(need);
   };
   // 检查一组站台（车站对象或 {size, name}）是否满足编组要求；返回 { cars, need, bad } 或 null
   M.formationShort = function (net, cars, list) {
