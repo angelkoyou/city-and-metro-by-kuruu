@@ -212,10 +212,18 @@
     for (const k in lines) if (CM.Metro.lineKmh(lines[k]) >= 160) return true;
     return false;
   };
+  // v4.6 统一准入：某车型能否在这条轨道上线（只判轨道类型，不判谁更快）。
+  // 160 高速轨道仍按 v3.0 只给 D 型专用列车；普通轨道不再按「车型比线路慢」拦人，
+  // 慢车买回来照样上线，只是整条交路按 min(轨道限速, 车型限速) 降速运行。
+  F.lineFit = function (m, kmh) {
+    if (!m) return false;
+    if (m.only160) return kmh >= 160;
+    return kmh < 160;
+  };
   F.fitModel = function (g, lid, m) {
     const kmh = lid ? CM.Metro.lineKmh(g.net.lines[lid]) : 0;
-    if (m.only160) return kmh >= 160 || (!lid && F.has160(g));
-    return kmh <= 80 || m.kmh >= kmh;
+    if (!lid) return !m.only160 || F.has160(g);   // 车辆段：全网有 160 线路才卖 D 型车
+    return F.lineFit(m, kmh);
   };
   // v3.3：全自动无人驾驶车（gen-auto）上市后进入「无人驾驶时代」——除 160 专用的 D 型无人列车外，
   // 其余车型一律停售，玩家只能买全自动无人驾驶车。车型是否可买只看上市年份与该城市是否有售。
@@ -250,12 +258,14 @@
     const later = F.upcoming(mapId, y).filter(function (m) { return m.kmh >= kmh; });
     return { ok: false, year: later.length ? later[0].from : null };
   };
-  // 列车能否在这条路线上运行：编组不超过站台，最高速度不低于线路运行速度（只对高于 80 km/h 的线路要求）
-  // v3.0：D 型车（only160）只能跑 160 轨道；普通车型不能跑比自己最高速度更快的线路
-  const tooSlow = function (t, rt) {
-    const m = F.model(t.model);
-    if (m.only160 && rt.kmh < 160) return true;
-    return rt.kmh > 80 && m.kmh < rt.kmh;
+  // 列车能否在这条路线上运行：只检查编组是否放得下与 160 专用车的轨道限制。
+  // v4.6：轨道速度高于车型限速时列车照常上线，实际运行速度取 min(轨道限速, 车型限速)（见 F.routeCapKmh / M.applyTiming）；
+  // 「不够快」不再拦人，只作为线路运营页的信息提示。
+  const tooSlow = function (t, rt) { return !F.lineFit(F.model(t.model), rt.kmh); };
+  // 车型是否比线路设计速度慢（只用于提示，不影响能否上线）
+  F.slowerThanLine = function (g, lid, m) {
+    const kmh = lid ? CM.Metro.lineKmh(g.net.lines[lid]) : 0;
+    return kmh > 80 && m.kmh < kmh;
   };
   // 某年代的车型：只用于开局既有线路与旧存档的「历史车队」（不是新建线路的默认车型）。
   // 这里保留本城真实车型（含城市特色车型），因为它们是被玩家接管的历史资产，不参与自动选用规则。
@@ -302,6 +312,25 @@
   };
   // 最低服务水平所需的列车（早高峰）：按周转时间
   F.floorNeed = function (rt) { return Math.max(1, Math.ceil(CM.Model.serviceFloor(rt, 0) * rt.cycleSec / 3600 - 1e-6)); };
+  // v4.6：编译路线的实际运行速度上限 = min(轨道设计速度, 本路线配属列车里最慢车型的限速)。
+  // 慢车可以上线，但列车永远不能超过自己车型的限速；降速通过 M.timing 重算区间用时与周转。
+  F.routeCapKmh = function (rt, fp) {
+    let cap = rt.kmh;
+    if (fp) for (let d = 0; d < 2; d++) for (const u of fp.units[d]) if (u.m && u.m.kmh > 0 && u.m.kmh < cap) cap = u.m.kmh;
+    return cap;
+  };
+  // 时刻表变了以后，最短路图里每条乘车区间边的旅行时间要跟着变（buildMetro 建图时用的是当时的区间用时）
+  F.syncRideTimes = function (net) {
+    if (!net || !net.rideEdge || !net.eT0 || !net.C) return;
+    const dw = CM.CFG.metro.dwell / 60;
+    for (let r = 0; r < net.C.routes.length; r++) {
+      const rt = net.C.routes[r], re = net.rideEdge[r]; if (!re) continue;
+      for (let k = 0; k * 2 + 1 < re.length && k < rt.legSec.length; k++) {
+        const t = rt.legSec[k] / 60 + dw;
+        net.eT0[re[2 * k]] = t; net.eT0[re[2 * k + 1]] = t;
+      }
+    }
+  };
   const cache = new WeakMap();
   // 线网 net 各路线的车队计划：avail 各方向可用列车数，cap / cars / opsF 平均定员、编组与成本系数，units 各方向的列车（画面用），
   // manual 手动模式各方向各时段投入数，blocked 编组超过站台长度、不能上线的列车数。草案线网（预测）按随线配车补足最低需要
@@ -309,15 +338,27 @@
     const fl = g.fleet; if (!fl || !net || !net.C) return null;
     const hit = cache.get(net); if (hit && hit.ver === fl.ver && hit.ym === g.ym()) return hit.plan;
     const C = net.C, draft = C.net !== g.net, byLine = routesOfLine(C), y = g.clock.y;
-    const plan = C.routes.map(function (rt) { return { avail: [0, 0], units: [[], []], cap: rt.cap, cars: rt.cars, opsF: rt.opsK || 1, manual: null, blocked: 0, slow: 0, floor: F.floorNeed(rt) }; });
+    const plan = C.routes.map(function (rt) { return { avail: [0, 0], units: [[], []], cap: rt.cap, cars: rt.cars, opsF: rt.opsK || 1, manual: null, blocked: 0, slow: 0, runKmh: rt.kmh, floor: 0 }; });
     for (const t of fl.trains) {
       if (!t.line) continue; const rs = byLine.get(t.line); if (!rs) continue;
       const pos = placeOf(C, rs, t); if (!pos) continue;
       const rt = C.routes[pos.r], fp = plan[pos.r];
       if (t.cars > rt.cars) { fp.blocked++; continue; }
-      if (tooSlow(t, rt)) { fp.slow++; continue; }
-      fp.units[pos.d].push({ id: t.id, m: F.model(t.model), cars: t.cars, cap: F.capOf(t), ops: F.opsF(g, t) });
+      const m = F.model(t.model);
+      if (!F.lineFit(m, rt.kmh)) { fp.blocked++; continue; }        // 160 轨道专属 / D 型车不能跑普通线
+      if (rt.kmh > 80 && m.kmh < rt.kmh) fp.slow++;                 // v4.6：慢车照常上线，只是按车型限速降速运行
+      fp.units[pos.d].push({ id: t.id, m: m, cars: t.cars, cap: F.capOf(t), ops: F.opsF(g, t) });
     }
+    // v4.6：先按配属车型统一复核每条路线的实际速度上限与时刻表，再算投入列车与最低需要
+    C.routes.forEach(function (rt, r) {
+      const cap = F.routeCapKmh(rt, plan[r]);
+      plan[r].runKmh = cap;
+      CM.Metro.applyTiming(rt, cap);
+    });
+    // 草案线网（C-only）没有 rideEdge，正式线网可能由另一个 F.plan 入口抢先改过时刻表；
+    // 这里无条件按当前 legSec 复核，保证最短路图里的区间旅行时间与实际运行速度始终一致
+    F.syncRideTimes(net);
+    C.routes.forEach(function (rt, r) { plan[r].floor = F.floorNeed(rt); });
     C.routes.forEach(function (rt, r) {
       const fp = plan[r], nd = rt.loop ? 2 : 1;
       let n = 0, cap = 0, cars = 0, ops = 0;
@@ -717,7 +758,8 @@
       const o = g.fleet.ops[lid]; if (o && o.mode === 'manual') continue;
       for (const s of F.lineInfo(g, lid) || []) if (s.short > 0) needs.push({ lid: lid, svc: s.id, name: s.name, rt: s.rt, avail: s.avail, need: s.peakNeed, short: s.short, maxCars: s.maxCars, ids: [], stuck: false });
     }
-    const fit = function (t, x) { return t.cars <= x.maxCars && (x.rt.kmh <= 80 || F.model(t.model).kmh >= x.rt.kmh) && F.canAutoPick(g, F.model(t.model)); };
+    // v4.6：闲置慢车也能被智能分配上线（按车型限速降速运行），仍只调已购置且可自动选用的车型
+    const fit = function (t, x) { const m = F.model(t.model); return t.cars <= x.maxCars && F.lineFit(m, x.rt.kmh) && F.canAutoPick(g, m); };
     for (;;) {
       let best = null, bs = 0;
       for (const x of needs) { if (x.short <= 0 || x.stuck) continue; const v = x.short / Math.max(1, x.need) + x.short * 1e-3; if (v > bs) { bs = v; best = x; } }
@@ -801,7 +843,7 @@
         });
         const units = fp ? fp.units[d] : [];
         let peakNeed = 0; for (const x of per) if (x) peakNeed = Math.max(peakNeed, x.needN);
-        out.push({ r: r, d: d, rt: rt, id: F.svcId(rt, d), name: F.svcName(rt, d), avail: fp ? fp.avail[d] : 0, blocked: fp ? (rt.loop ? (d ? 0 : fp.blocked) : fp.blocked) : 0, units: units, per: per, cycleMin: rt.cycleSec / 60, maxCars: rt.cars, floor: F.floorNeed(rt), peakNeed: peakNeed, short: rt.svc && !(fp && fp.avail[d]) ? 0 : Math.max(0, peakNeed - (fp ? fp.avail[d] : 0)), svc: rt.svc || null, skipped: rt.skipped || 0, stops: (rt.nStops != null ? rt.nStops : rt.stIds.length), slow: fp ? (rt.loop && d ? 0 : fp.slow) : 0 });
+        out.push({ r: r, d: d, rt: rt, id: F.svcId(rt, d), name: F.svcName(rt, d), avail: fp ? fp.avail[d] : 0, blocked: fp ? (rt.loop ? (d ? 0 : fp.blocked) : fp.blocked) : 0, units: units, per: per, cycleMin: rt.cycleSec / 60, maxCars: rt.cars, floor: F.floorNeed(rt), peakNeed: peakNeed, short: rt.svc && !(fp && fp.avail[d]) ? 0 : Math.max(0, peakNeed - (fp ? fp.avail[d] : 0)), svc: rt.svc || null, skipped: rt.skipped || 0, stops: (rt.nStops != null ? rt.nStops : rt.stIds.length), slow: fp ? (rt.loop && d ? 0 : fp.slow) : 0, runKmh: rt.runKmh || rt.kmh });
       }
     });
     // 全程交路可以不配车：本线有列车跑在加开的交路上时不算缺车（每条线路至少有一个交路在运行即可）
@@ -810,6 +852,25 @@
   };
   // 线路上的列车（按交路）与车辆段闲置列车
   F.trainsOf = function (g, lid, svc) { return g.fleet.trains.filter(function (t) { return t.line === lid && (svc == null || t.svc === svc); }); };
+  // v4.6：每条交路独立的日上车人次（周平均）。数据直接来自各编译路线的 routeBoard，环线按该时段
+  // 实际发车频率把 routeBoardDir 拆到顺行/逆行，因此所有交路相加严格等于线路总客流。
+  F.serviceRiders = function (g, lid) {
+    const m = g && g.model, net = m && m.net, sd = m && !m.dailyStale ? m.stDaily : null, out = new Map();
+    if (!net || !sd || !sd.routeBoard) return out;
+    const C = net.C;
+    for (let r = 0; r < C.routes.length; r++) {
+      const rt = C.routes[r]; if (rt.lineId !== lid) continue;
+      if (rt.loop && sd.routeBoardDir) {
+        out.set(r + ':0', sd.routeBoardDir[2 * r] || 0);
+        out.set(r + ':1', sd.routeBoardDir[2 * r + 1] || 0);
+      } else out.set(r + ':0', sd.routeBoard[r] || 0);
+    }
+    return out;
+  };
+  F.lineRiders = function (g, lid) {
+    let s = 0; for (const v of F.serviceRiders(g, lid).values()) s += v;
+    return s;
+  };
 
   // ---------------- 每月：运力不足与超龄提示 ----------------
   // ---------------- v3.7 自动配置列车（总开关） ----------------
@@ -987,10 +1048,12 @@
       }
     }
     if (!info.length) { el.appendChild(h('div', { class: 'note' }, '线路运营后在这里安排列车。')); return; }
-    // 运行交路：全程站站停之外可以加开快车、区间车，各交路分别配车
+    // 运行交路：全程站站停之外可以加开快车、区间车，各交路分别配车，也分别统计客流量
     const kindOf = function (s) { return !s.svc ? '全程站站停' : (s.rt.stIds.length ? (s.skipped ? '停靠 ' + s.stops + ' 站 · 通过 ' + s.skipped + ' 站' : '区间 · ' + s.stops + ' 站') : ''); };
     const allStops = info.filter(function (s) { return !s.svc; });
+    const svcRiders = F.serviceRiders(g, lid), dailyOk = !!(g.model.stDaily && !g.model.dailyStale);
     el.appendChild(h('div', { class: 'fl-h fo-svc-head' }, h('span', { class: 'grow' }, '运行交路 ', h('span', { class: 'tiny muted' }, (info.filter(function (s) { return s.svc; }).length ? info.length + ' 个' : '默认全程站站停'))),
+      dailyOk ? h('span', { class: 'tiny', 'data-tip': '各交路客流量相加等于本线日客运量' }, '本线日客流 {n} 人次（各交路合计）'.replace('{n}', U.fmtPeople(F.lineRiders(g, lid)))) : null,
       h('button', { class: 'btn sm', 'data-tip': '加开快车（跳站）或区间车（只跑一段）。只改运营组织，不收费', onclick: function () { self.showServiceEditor(lid); } }, ic('plus', 14), '新增交路')));
     const peakByBase = new Map();
     for (const s of info) { const x = s.per[0]; if (x && (s.d === 0)) { const b = s.rt.baseId != null ? s.rt.baseId : s.rt.id; peakByBase.set(b, (peakByBase.get(b) || 0) + x.f); } }
@@ -1002,9 +1065,12 @@
       h('div', null, h('small', null, '高峰需要'), h('b', { class: short ? 'bad' : '' }, info.reduce(function (s, x) { return s + x.peakNeed; }, 0) + ' 列')),
       h('div', null, h('small', null, '车型'), h('b', null, grp.length ? grp.map(function (x) { return F.shortOf(x.m); }).filter(function (v, i, a) { return a.indexOf(v) === i; }).join('、') : '—'))));
     if (short && !manual) el.appendChild(this.callout('warn', 'warn', h('span', null, '高峰运力不足：还差约 ' + short + ' 列。智能调度只调度已有列车，可以购买列车，或从客流较少的线路调车。')));
-    if (blocked) el.appendChild(this.callout('bad', 'warn', blocked + ' 列列车编组超过本线站台长度，不能上线：升级沿线车站，或调往其他线路、出售。'));
+    if (blocked) el.appendChild(this.callout('bad', 'warn', '{v0} 列列车不能上线：编组超过本线站台长度，或车型与本线轨道类型不匹配。升级沿线车站，或调往其他线路、出售。'.replace('{v0}', blocked)));
     const slowN = info.reduce(function (a, x) { return a + (x.slow || 0); }, 0);
-    if (slowN) el.appendChild(this.callout('bad', 'warn', slowN + ' 列列车的最高速度低于本线运行速度，不能上线：购买更快的车型，或把列车调往其他线路、出售。'));
+    const caps = info.map(function (x) { return x.runKmh || (x.rt && x.rt.runKmh) || 0; }).filter(function (v) { return v > 0; });
+    const runKmh = caps.length ? Math.min.apply(null, caps) : 0;
+    if (slowN) el.appendChild(this.callout('info', 'info', '{v0} 列列车的车型限速低于本线轨道速度，可以上线，但整条交路按较慢的车型限速降速运行（当前实际 {v1} km/h）：换用更快的车型可恢复设计速度。'.replace('{v0}', slowN).replace('{v1}', runKmh)));
+    else if (runKmh && CM.Metro.lineKmh(g.net.lines[lid]) > runKmh) el.appendChild(this.callout('info', 'info', '受配属车型限制，本线实际运行速度 {v0} km/h，低于轨道设计速度。'.replace('{v0}', runKmh)));
     // 配属列车：按车型与编组分组，可调回车辆段或出售
     const pl = F.plan(g, g.model.net) || [], onRoute = new Set();
     const unitRow = function (x, warn) {
@@ -1021,6 +1087,7 @@
         s.svc ? h('button', { class: 'btn sm ghost', onclick: function () { self.showServiceEditor(lid, s.svc); } }, ic('pencil', 13), '编辑') : null,
         s.svc && (s.d === 0 || !s.rt.loop) ? h('button', { class: 'btn sm ghost', 'data-tip': '取消这个交路，列车回到全程交路', onclick: function () { const r = F.removeService(g, lid, s.svc); if (r.error) self.toast(r.error, 'bad'); else { sfx('serviceDel'); self.toast('已取消交路，列车回到全程交路', 'info'); done(); } } }, ic('close', 13), '取消') : null));
       card.appendChild(h('div', { class: 'fo-svc-h' }, h('span', { class: 'swatch', style: { background: lineColor(g, lid) } }), h('b', { class: 'grow' }, s.name),
+        dailyOk ? h('span', { class: 'tag' }, '日客流 {n} 人次'.replace('{n}', U.fmtPeople(svcRiders.get(s.r + ':' + s.d) || 0))) : null,
         h('span', { class: 'tag' }, '周转 ' + Math.round(s.cycleMin) + ' 分钟'), h('span', { class: 'tag' }, '最长 ' + s.maxCars + ' 节')));
       const ids = new Set((pl[s.r] ? pl[s.r].units[s.d] : []).map(function (u) { return u.id; })); ids.forEach(function (id) { onRoute.add(id); });
       const gs = groupTrains(g, all.filter(function (t) { return ids.has(t.id); }));
@@ -1047,12 +1114,12 @@
         h('span', { class: 'grow tiny muted' }, '配属 ' + s.avail + ' 列 · 最低服务需要 ' + s.floor + ' 列')));
       el.appendChild(card);
     }
-    // 编组超过站台长度、不能上线的列车
+    // 编组超过站台长度、或车型与轨道类型不匹配的列车不能上线（车型慢只降速，仍可上线）
     const off = groupTrains(g, all.filter(function (t) { return !onRoute.has(t.id); }));
     if (off.length) {
-      const lineKmh = CM.Metro.lineKmh(g.net.lines[lid]);
+      const lkmh = CM.Metro.lineKmh(g.net.lines[lid]);
       el.appendChild(h('div', { class: 'fl-h' }, '不能上线的列车'));
-      for (const x of off) el.appendChild(unitRow(x, lineKmh > 80 && x.m.kmh < lineKmh ? '最高 ' + x.m.kmh + ' km/h，低于本线 ' + lineKmh + ' km/h，调往其他线路或出售' : '编组超过本线站台长度，调往其他线路或出售'));
+      for (const x of off) el.appendChild(unitRow(x, !F.lineFit(x.m, lkmh) ? (x.m.only160 ? '160 专用列车，只能在 160 轨道上线' : '普通列车不能上 160 高速轨道') : '编组超过本线站台长度，调往其他线路或出售'));
     }
     el.appendChild(this.sec('fo-rule', '列车运营说明', '', function () {
       return h('div', { class: 'note' }, h('ul', { class: 'tk-tips' },
@@ -1060,7 +1127,7 @@
         h('li', null, '买车按车型与编组整列购买，编组不能超过沿线最小车站的站台长度；车型按城市与年代开放。'),
         h('li', null, '运营按车厢公里计费，老车型与超龄列车更费钱；出售按残值回收（买价的 75% 起逐年折旧，最低 8%）。'),
         h('li', null, '新线与延长按最低服务水平随线配车，费用计入建设；车辆段有闲置列车时先用闲置列车。'),
-        h('li', null, '运行速度：速度越低，允许的转弯半径越小（40 km/h 约 100 m，120 km/h 约 600 m）；高于 80 km/h 的线路要用足够快的车型，运营费用也更高。'),
+        h('li', null, '运行速度：速度越低，允许的转弯半径越小（40 km/h 约 100 m，120 km/h 约 600 m）；轨道设计速度高于车型限速时列车仍可上线，但整条交路按较慢的车型限速降速运行，周转变长、需要的列车更多。'),
         h('li', null, '运行交路：快车跳过的车站不停车，节省时间但服务变少；区间车集中运力在客流大的一段。各交路分别配车，同一条轨道合计最多 ' + CFG.metro.fMax + ' 列/时，游戏不模拟越行。')));
     }, false, 'info'));
   };
@@ -1105,7 +1172,19 @@
     const bases = C.routes.filter(function (r) { return r.lineId === lid && !r.svc; });
     if (!L || !tp || !bases.length) { this.toast('线路运营后才能设置交路', 'bad'); return; }
     const old = id ? (L.svcs || []).find(function (x) { return x.id === id; }) : null, loop = tp.topo === 'loop', box = h('div');
-    const xfer = function (sid) { const k = C.sIndex.get(sid); return k != null && C.stationLines[k].size > 1; };
+    // v4.6：站点停靠选择只列「正在运营」的站——预留站与已关闭运营的站不设站台，既不显示也不能被选为起讫站
+    const stationOpen = function (sid) { return MM.stationOpen(net.stations[sid]); };
+    // 换乘站悬停提示：C.stationLines 是编译期已按 stationOpen 过滤的「实际可换乘线路」；
+    // 预留站接入多线时用 stationTracks 标为「未来换乘站」，升级前不提供换乘。
+    const xferLines = function (sid) {
+      const k = C.sIndex.get(sid); if (k == null || !C.stationLines[k]) return [];
+      return Array.from(C.stationLines[k]).filter(function (x) { return x !== lid && net.lines[x]; })
+        .map(function (x) { return { id: x, name: net.lines[x].name, color: AX.line(net.lines[x]) }; });
+    };
+    const xfer = function (sid) { return xferLines(sid).length > 0; };
+    const futureXfer = function (sid) {
+      const k = C.sIndex.get(sid); return k != null && C.stationTracks[k] && C.stationTracks[k].size > 1 && !xfer(sid);
+    };
     let ri = 0, ia = 0, ib = bases[0].stIds.length - 1, skip = new Set(), kind = 'express', named = false, name = '大站快车';
     if (old) {
       const plan = MM.svcStops(tp, old); name = old.name; named = true; skip = new Set(old.skip || []);
@@ -1113,17 +1192,33 @@
       kind = skip.size ? 'express' : 'short';
     }
     const base = function () { return bases[ri]; }, nameOf = function (sid) { return net.stations[sid].name; };
+    const openIdx = function () { const a = []; base().stIds.forEach(function (sid, i) { if (stationOpen(sid)) a.push(i); }); return a; };
+    // 起讫站若正好落在预留站/停用站上，改成最近一座运营中的站，保证两端必须停靠的前提仍然成立
+    const fixEnds = function () {
+      const st = base().stIds, o = openIdx(); if (!o.length) return;
+      if (loop) return;
+      if (!stationOpen(st[ia])) ia = o[0];
+      const later = o.filter(function (i) { return i > ia; });
+      if (!stationOpen(st[ib]) || ib <= ia) ib = later.length ? later[later.length - 1] : o[o.length - 1];
+    };
+    fixEnds();
     const autoName = function () { if (!named) name = kind === 'express' ? '大站快车' : '区间车（' + nameOf(base().stIds[ia]) + '—' + nameOf(base().stIds[ib]) + '）'; };
     const preset = function (mode) {
-      skip = new Set(); const st = base().stIds;
-      for (let i = ia + 1; i < ib; i++) if (mode === 'alt' ? (i - ia) % 2 === 1 && !xfer(st[i]) : (mode === 'xfer' ? !xfer(st[i]) : false)) skip.add(st[i]);
+      skip = new Set(); const st = base().stIds, lo = loop ? 0 : ia, hi = loop ? st.length - 1 : ib;
+      for (let i = lo; i <= hi; i++) {
+        const sid = st[i];
+        if (!stationOpen(sid)) { skip.add(sid); continue; }   // 预留站 / 停用站一律通过不停
+        if (loop ? i === 0 : (i === ia || i === ib)) continue;
+        if (mode === 'alt' ? (i - ia) % 2 === 1 && !xfer(sid) : (mode === 'xfer' ? !xfer(sid) : false)) skip.add(sid);
+      }
     };
     if (!old) {
-      if (loop) preset('alt'); else { ib = bases[0].stIds.length - 1; preset('alt'); }
+      if (loop) preset('alt'); else { ib = bases[0].stIds.length - 1; fixEnds(); preset('alt'); }
       autoName();
     }
     const svOf = function () {
-      const st = base().stIds, last = st.length - 1, sk = []; for (let i = loop ? 1 : ia + 1; i < (loop ? st.length : ib); i++) if (skip.has(st[i])) sk.push(st[i]);
+      const st = base().stIds, last = st.length - 1, sk = [];
+      for (let i = loop ? 0 : ia + 1; i < (loop ? st.length : ib); i++) if (skip.has(st[i])) sk.push(st[i]);
       const sv = { id: old ? old.id : null, name: name.trim() || '加开交路', skip: sk };
       if (!loop) { if (ia > 0) sv.from = st[ia]; if (ib < last) sv.to = st[ib]; }
       if (bases.length > 1) sv.via = st[last];
@@ -1136,8 +1231,8 @@
         h('div', { class: 'seg-ctl sm' }, [['express', '快车（跳站）'], ['short', '区间车']].filter(function (o) { return !loop || o[0] === 'express'; }).map(function (o) {
           return h('button', { class: kind === o[0] ? 'on' : '', 'data-silent': '1', onclick: function () {
             kind = o[0];
-            if (kind === 'short') { const n = st.length, a = Math.floor(n * 0.2), b = Math.max(a + 1, Math.ceil(n * 0.8) - 1); ia = a; ib = Math.min(n - 1, b); skip = new Set(); }
-            else { ia = 0; ib = st.length - 1; preset('alt'); }
+            if (kind === 'short') { const n = st.length, o = openIdx(), a = Math.floor(n * 0.2), b = Math.max(a + 1, Math.ceil(n * 0.8) - 1); ia = o.filter(function (i) { return i >= a; })[0]; ib = o.filter(function (i) { return i <= b; }).pop(); if (ia == null || ib == null || ib <= ia) { ia = o[0]; ib = o[o.length - 1]; } skip = new Set(); }
+            else { ia = 0; ib = st.length - 1; fixEnds(); preset('alt'); }
             autoName(); draw();
           } }, o[1]);
         }))));
@@ -1147,29 +1242,54 @@
       if (bases.length > 1) {
         const sel = h('select', { 'aria-label': '支线方向' });
         bases.forEach(function (r, i) { sel.appendChild(h('option', { value: String(i), selected: i === ri ? 'selected' : null }, r.label)); });
-        sel.addEventListener('change', function () { ri = +sel.value; ia = 0; ib = bases[ri].stIds.length - 1; skip = new Set(); autoName(); draw(); });
+        sel.addEventListener('change', function () { ri = +sel.value; ia = 0; ib = bases[ri].stIds.length - 1; fixEnds(); skip = new Set(); autoName(); draw(); });
         box.appendChild(h('div', { class: 'fo-sv-row' }, h('small', null, '方向'), sel));
       }
       if (!loop) {
         const pick = function (label, cur, lo, hi, set) {
           const sel = h('select', { 'aria-label': label });
-          for (let i = lo; i <= hi; i++) sel.appendChild(h('option', { value: String(i), selected: i === cur ? 'selected' : null }, nameOf(st[i])));
+          for (let i = lo; i <= hi; i++) if (stationOpen(st[i])) sel.appendChild(h('option', { value: String(i), selected: i === cur ? 'selected' : null }, nameOf(st[i])));
           sel.addEventListener('change', function () { set(+sel.value); autoName(); draw(); });
           return h('div', { class: 'fo-sv-row' }, h('small', null, label), sel);
         };
         box.appendChild(pick('起点站', ia, 0, ib - 1, function (v) { ia = v; }));
         box.appendChild(pick('终点站', ib, ia + 1, st.length - 1, function (v) { ib = v; }));
       }
-      // 停靠站：点选切换；两端必须停靠
+      // 停靠站：只列正在运营的站（预留站与停用站不设站台，自动通过不停，也不出现在选择项里）；两端必须停靠
       const lo = loop ? 0 : ia, hi = loop ? st.length - 1 : ib, chips = h('div', { class: 'fo-sv-stops' });
+      const firstOpen = (openIdx()[0] != null ? openIdx()[0] : 0);
+      const skipOpen = function () { let n = 0; for (const s of skip) if (stationOpen(s)) n++; return n; };
+      const xferInfo = h('div', { class: 'fo-sv-xfer tiny muted' }, '悬停换乘站可查看该站可换乘的线路。');
+      const showXfer = function (sid) {
+        const lines = sid ? xferLines(sid) : [];
+        xferInfo.replaceChildren();
+        if (lines.length) {
+          xferInfo.appendChild(h('span', null, '本站可换乘：'));
+          for (const l of lines) xferInfo.appendChild(h('span', { class: 'tag', style: { background: l.color + '22', color: l.color }, 'data-no-i18n': '1' }, '● ' + l.name));
+        } else if (sid && futureXfer(sid)) xferInfo.appendChild(h('span', null, '预留换乘 · 补建为正式站后启用换乘'));
+        else xferInfo.appendChild(h('span', null, '悬停换乘站可查看该站可换乘的线路。'));
+        if (CM.I18n) CM.I18n.localize(xferInfo);
+      };
+      chips.addEventListener('mouseleave', function () { showXfer(null); });
       for (let i = lo; i <= hi; i++) {
-        const sid = st[i], fixed = loop ? i === 0 : (i === ia || i === ib), stop = fixed || !skip.has(sid);
-        chips.appendChild(h('button', { class: 'fo-sv-stop' + (stop ? ' on' : '') + (xfer(sid) ? ' xfer' : ''), disabled: fixed ? true : null, 'aria-pressed': stop ? 'true' : 'false', 'data-tip': fixed ? '起讫站必须停靠' : (stop ? '点击改为通过不停' : '点击改为停靠'), 'data-silent': '1', onclick: function () {
-          if (skip.has(sid)) skip.delete(sid); else skip.add(sid);
-          kind = skip.size ? 'express' : (ia > 0 || ib < st.length - 1 ? 'short' : kind); draw();
-        } }, nameOf(sid)));
+        const sid = st[i];
+        if (!stationOpen(sid)) continue;
+        const fixed = loop ? i === firstOpen : (i === ia || i === ib), stop = fixed || !skip.has(sid);
+        const lines = xferLines(sid), isX = lines.length > 0, fut = futureXfer(sid);
+        chips.appendChild(h('button', {
+          class: 'fo-sv-stop' + (stop ? ' on' : '') + (isX ? ' xfer' : '') + (fut ? ' future' : ''),
+          disabled: fixed ? true : null, 'aria-pressed': stop ? 'true' : 'false',
+          'data-station': sid, 'data-xfer': lines.map(function (l) { return l.id; }).join(','),
+          'data-tip': isX ? '悬停查看本站可换乘的线路' : (fut ? '预留换乘 · 补建为正式站后启用换乘' : (fixed ? '起讫站必须停靠' : (stop ? '点击改为通过不停' : '点击改为停靠'))),
+          'data-silent': '1',
+          onmouseenter: function () { showXfer(sid); },
+          onclick: function () {
+            if (skip.has(sid)) skip.delete(sid); else skip.add(sid);
+            kind = skipOpen() ? 'express' : (ia > 0 || ib < st.length - 1 ? 'short' : kind); draw();
+          }
+        }, nameOf(sid)));
       }
-      box.appendChild(h('div', { class: 'fo-sv-row top' }, h('small', null, '停靠站'), h('div', { class: 'grow' }, chips,
+      box.appendChild(h('div', { class: 'fo-sv-row top' }, h('small', null, '停靠站'), h('div', { class: 'grow' }, chips, xferInfo,
         h('div', { class: 'row', style: { gap: '6px', marginTop: '6px', flexWrap: 'wrap' } },
           h('button', { class: 'btn sm ghost', onclick: function () { preset('all'); kind = ia > 0 || ib < st.length - 1 ? 'short' : kind; draw(); } }, '全部停靠'),
           h('button', { class: 'btn sm ghost', onclick: function () { preset('alt'); kind = 'express'; autoName(); draw(); } }, '隔站停靠'),
@@ -1242,7 +1362,7 @@
       const t = h('table', { class: 'tbl' }, h('tr', null, h('th', null, '交路'), h('th', null, '配属'), h('th', null, '高峰需要'), h('th', null, '调入'), h('th', null, '还差')));
       for (const x of plan.needs) t.appendChild(h('tr', null, h('td', null, h('span', { class: 'swatch', style: { background: lineColor(g, x.lid), marginRight: '6px' } }), x.name), h('td', null, String(x.avail)), h('td', null, String(x.need)), h('td', { class: x.ids.length ? 'good' : '' }, x.ids.length ? '+' + x.ids.length : '—'), h('td', { class: x.short ? 'bad' : '' }, String(x.short))));
       box.appendChild(h('div', { class: 'tbl-wrap' }, t));
-      box.appendChild(h('div', { class: 'note' }, h('span', null, plan.left ? '车辆段可分配 ' + plan.moved + ' 列，剩 ' + plan.left + ' 列。' : '车辆段可分配 ' + plan.moved + ' 列。'), h('span', null, plan.unmet ? '分配后还差 ' + plan.unmet + ' 列。' : '分配后高峰运力够用。'), plan.left && plan.unmet ? h('span', null, '剩下的列车编组超过站台长度或速度不够，不能上线。') : null));
+      box.appendChild(h('div', { class: 'note' }, h('span', null, plan.left ? '车辆段可分配 ' + plan.moved + ' 列，剩 ' + plan.left + ' 列。' : '车辆段可分配 ' + plan.moved + ' 列。'), h('span', null, plan.unmet ? '分配后还差 ' + plan.unmet + ' 列。' : '分配后高峰运力够用。'), plan.left && plan.unmet ? h('span', null, '剩下的列车编组超过站台长度，或车型与本线轨道类型不匹配。') : null));
     }
     box.appendChild(h('div', { class: 'modal-actions' },
       h('button', { class: 'btn', onclick: function () { self.closeScreen(); } }, plan.needs.length ? '取消' : '完成'),
@@ -1340,10 +1460,11 @@
         box.appendChild(h('div', { class: 'fl-h' }, svcLabel || (L ? L.name : '车辆段（闲置）'), use ? h('span', { class: 'tiny muted', style: { marginLeft: '8px' } }, use) : null));
         const lineKmh = CM.Metro.lineKmh(g.net.lines[lid]);
         for (const x of groupTrains(g, s.list)) {
-          const tooLong = x.cars > maxCars, slow = lineKmh > 80 && x.m.kmh < lineKmh, ok = !tooLong && !slow;
+          const m = x.m, tooLong = x.cars > maxCars, badTrack = !F.lineFit(m, lineKmh), slow = lineKmh > 80 && m.kmh < lineKmh, ok = !tooLong && !badTrack;
           box.appendChild(h('div', { class: 'fo-unit' },
-            h('span', { class: 'fo-pic', html: F.sideSVG(x.m, lineColor(g, lid), 84) }),
-            h('div', { class: 'grow' }, h('b', null, F.shortOf(x.m) + ' · ' + x.cars + ' 节 × ' + x.ids.length), ok ? null : h('small', { class: 'bad' }, tooLong ? '编组超过本线站台长度（最长 ' + maxCars + ' 节）' : '最高 ' + x.m.kmh + ' km/h，低于本线运行速度 ' + lineKmh + ' km/h')),
+            h('span', { class: 'fo-pic', html: F.sideSVG(m, lineColor(g, lid), 84) }),
+            h('div', { class: 'grow' }, h('b', null, F.shortOf(m) + ' · ' + x.cars + ' 节 × ' + x.ids.length),
+              !ok ? h('small', { class: 'bad' }, tooLong ? '编组超过本线站台长度（最长 ' + maxCars + ' 节）' : (m.only160 ? '160 专用列车，只能在 160 轨道上线' : '普通列车不能上 160 高速轨道')) : (slow ? h('small', { class: 'muted' }, '车型限速 {v0} km/h，上线后按车型限速降速运行'.replace('{v0}', m.kmh)) : null)),
             h('button', { class: 'btn sm', disabled: ok ? null : true, onclick: function () { sfx('trainMove'); F.move(g, [x.ids[x.ids.length - 1]], lid, svc); draw(); self.markUnsaved(); } }, '调入 1 列'),
             x.ids.length > 1 ? h('button', { class: 'btn sm ghost', disabled: ok ? null : true, onclick: function () { sfx('trainMove'); F.move(g, x.ids.slice(), lid, svc); draw(); self.markUnsaved(); } }, '全部') : null));
         }
@@ -1412,6 +1533,7 @@
     };
     for (const lid of M_sort(Object.keys(g.net.lines))) {
       const L = g.net.lines[lid], o = fl.ops[lid], inf = F.lineInfo(g, lid) || [];
+      const riders = F.serviceRiders(g, lid), dailyOk = !!(g.model.stDaily && !g.model.dailyStale);
       const lineTrains = fl.trains.filter(function (t) { return t.line === lid; });
       const byId = new Map(); for (const t of lineTrains) byId.set(t.id, t);
       const av = inf.reduce(function (a, x) { return a + x.avail; }, 0), nd = inf.reduce(function (a, x) { return a + x.peakNeed; }, 0);
@@ -1425,6 +1547,7 @@
         h('b', null, L.name),
         o && o.mode === 'manual' ? h('span', { class: 'tag' }, '手动调度') : null,
         h('span', { class: 'grow' }),
+        dailyOk ? h('span', { class: 'tiny muted', 'data-tip': '各交路客流量相加等于本线日客运量' }, '日客流 {n} 人次'.replace('{n}', U.fmtPeople(F.lineRiders(g, lid)))) : null,
         oldN ? h('span', { class: 'tiny bad' }, '超龄 ' + oldN) : null,
         h('span', { class: 'tiny ' + (inf.length && nd > av ? 'bad' : 'muted'), 'data-tip': inf.length ? '本线配属列车 / 高峰需要（按各时段最大值）' : '本线列车数（还没有可运行的交路）' },
           inf.length ? av + ' / ' + nd + ' 列' : lineTrains.length + ' 列')));
@@ -1436,17 +1559,17 @@
         for (const t of mine) seen.add(t.id);
         const nm = svcTitle(L, s), sub = svcSub(s);
         tbl.appendChild(h('tr', null,
-          h('td', null, h('b', null, nm), sub ? h('small', { class: 'muted' }, sub) : null),
+          h('td', null, h('b', null, nm), sub ? h('small', { class: 'muted' }, sub) : null,
+            dailyOk ? h('small', { class: 'muted' }, '日客流 {n} 人次'.replace('{n}', U.fmtPeople(riders.get(s.r + ':' + s.d) || 0))) : null),
           kindsCell(mine),
           h('td', null, h('b', { class: s.short > 0 ? 'bad' : '' }, s.avail + ' / ' + s.peakNeed),
             s.short > 0 ? h('small', { class: 'bad' }, '缺 ' + s.short + ' 列') : (s.floor ? h('small', { class: 'muted' }, '最低 ' + s.floor + ' 列') : null)),
           actsCell(lid, L, nm, mine, { svc: s.id, maxCars: Math.max(1, Math.min(8, s.maxCars || maxCars)) })));
       }
-      // 编组超过站台长度、或速度低于本线运行速度的列车不能上线：单独一行列出，仍可直接卖出
-      // （没有交路的线路下面会整行列出本线列车，这里不重复）
+      // 只有编组超过站台长度、或车型与轨道类型不匹配时才会剩下（车型慢只降速，仍可上线）
       const rest = inf.length ? lineTrains.filter(function (t) { return !seen.has(t.id); }) : [];
       if (rest.length) tbl.appendChild(h('tr', { class: 'rest' },
-        h('td', null, h('b', null, '未上线'), h('small', { class: 'muted' }, '编组超过站台或速度不够')),
+        h('td', null, h('b', null, '未上线'), h('small', { class: 'muted' }, '编组超过站台或轨道类型不匹配')),
         kindsCell(rest),
         h('td', null, h('b', { class: 'muted' }, '—')),
         actsCell(lid, L, '未上线列车', rest, null)));

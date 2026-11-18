@@ -22,13 +22,16 @@
     const term = rt.loop ? null : C.stations[L.rev ? rt.stIdx[0] : rt.stIdx[n - 1]];
     const seg = rt.segRefs[L.k], sd = seg && C.segs.get(seg.id), type = sd ? sd.seg.type : 'underground';
     const hh = A.heightAt(rt, p);
-    const v = A.trainSpeed(t);
+    // v4.6：轨道设计速度高于车型限速时按较慢的车型限速运行，跟随卡片显示的速度不得超过车型限速
+    const mdlKmh = t.mdl && t.mdl.kmh > 0 ? t.mdl.kmh : Infinity;
+    const v = Math.min(A.trainSpeed(t), mdlKmh / 3.6);
     const dwell = t.t >= L.T, hold = t.t < 0;
     const water = g.city.waterAt(p.x, p.y) ? g.city.riverNameAt(p.x, p.y) : null;
     const rg = g.city.regionAt(p.x, p.y);
-    let lf = 0;
-    const model = g.model, W = A.W, f = W ? model.freqAt(t.g.r, W, rt.loop ? (L.rev ? 1 : 0) : null) : 0, capR = model.capOf(t.g.r, net);
-    if (f > 0 && net.rideEdge[t.g.r]) lf = model.edgeLoadAt(net.rideEdge[t.g.r][2 * L.k + (L.rev ? 1 : 0)], W) / (f * capR);
+    // v4.6：载客数在进入本区间时锁定，行驶途中不随时段权重波动；上下客只在停站时发生
+    const model = g.model, W = A.W;
+    const lf = W && A.legOccupancy ? A.legOccupancy(t, L, model, W) : 0;
+    const capR = model.capOf(t.g.r, net);
     // 本列车的定员（v2.5 车队：按它的车型与编组）；车上人数按区间平均每列载客
     const capT = t.mdl ? t.mdl.cap * (t.cars || rt.cars) : rt.cap;
     return {

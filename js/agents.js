@@ -62,7 +62,7 @@
   CM.Agents = Agents;
 
   // fillPending：读档、新开局或返回游戏后的第一次同步，按发车间隔把列车铺满全线（立即呈现稳定运行状态）
-  Agents.prototype.reset = function () { this.groups.clear(); this.trains = []; this.cars = []; this.carIndex.clear(); this.carOrder.length = this.carMoves.length = 0; this.peds = []; this.walkers = []; this.netRef = null; this.treeMaps.clear(); this.carBuckets = null; this.visibleRoads = null; this.roadRef = null; this.carPaths = new WeakMap(); this.roadEnds = null; this.screenRoads = null; this.crossings = null; this.tunCity = null; this.fillPending = true; this.linkInfo = null; this.carSpawnClock=this.pedSpawnClock=this.walkSpawnClock=0;this.trafficSample=null;this.turnCache=null; };
+  Agents.prototype.reset = function () { this.groups.clear(); this.trains = []; this.cars = []; this.carIndex.clear(); this.carOrder.length = this.carMoves.length = 0; this.peds = []; this.walkers = []; this.netRef = null; this._capSig = null; this.treeMaps.clear(); this.carBuckets = null; this.visibleRoads = null; this.roadRef = null; this.carPaths = new WeakMap(); this.roadEnds = null; this.screenRoads = null; this.crossings = null; this.tunCity = null; this.fillPending = true; this.linkInfo = null; this.carSpawnClock=this.pedSpawnClock=this.walkSpawnClock=0;this.trafficSample=null;this.turnCache=null; };
 
   Agents.prototype.update = function (dt, game, R) {
     const dtv = dt * game.visualRate() * CFG.time.visualPerSec;
@@ -70,7 +70,9 @@
     const model = game.model;
     const W = model.weights(game.clock.minute);
     this.W = W;
-    if (model.net !== this.netRef) this.syncNetwork(model.net);
+    // v4.6：车型限速变化会改区间用时，即使线网对象没换也要按新时刻表重建列车区段（列车位置与交路保持不变）
+    const capSig = model.net ? model.net.C.routes.map(function (r) { return (r.runKmh || r.kmh) + ':' + Math.round(r.cycleSec); }).join('|') : '';
+    if (model.net !== this.netRef || capSig !== this._capSig) { this._capSig = capSig; this.syncNetwork(model.net); }
     this.updateTrains(dtv, dt, model, W);
     if (CM.BgTransit) CM.BgTransit.update(dt, game);   // 背景交通的列车与渡轮（只用于画面）
     if (!R.view) return;
@@ -266,6 +268,18 @@
     const f = model.freqAt(t.g.r, W, t.g.rt.loop ? (L.rev ? 1 : 0) : null);
     return f > 0 ? model.edgeLoadAt(re[2 * L.k + (L.rev ? 1 : 0)], W) / (f * model.capOf(t.g.r, net)) : 0;
   };
+  // v4.6：一列车的载客数在「离开车站、进入这个区间」时锁定。时段权重是连续变化的，
+  // 若每帧都重新取断面客流，列车在区间里还没到站人数就会不停跳动；上下客只允许发生在停靠车站。
+  Agents.prototype.legOccupancy = function (t, L, model, W) {
+    if (!L || !model || !W) return 0;
+    // 缓存粒度：一次求解结果内、本区间内固定；求解/线网/车队版本变化后允许重新取一次断面客流
+    const key = model.version + ':' + t.g.r + ':' + L.k + ':' + (L.rev ? 1 : 0), cache = t._occ || (t._occ = new Map());
+    if (cache.has(key)) return cache.get(key);
+    const v = this.legLoad(t, L, model, W);
+    if (cache.size > 24) cache.clear();
+    cache.set(key, v);
+    return v;
+  };
   // 两种视图共用外观、门位及上下车动作；这些对象不进入存档或交通求解。
   Agents.DOOR_FRACTIONS = [0.3, 0.7];
   Agents.CAR_M = CAR_M; Agents.GAP_M = GAP_M;
@@ -305,8 +319,14 @@
     return lk;
   };
   Agents.prototype.trainRiders = function (t, ph, nCar, model, W, out) {
-    out=out||[];out.length=0;const L=t.g.legs[t.leg];if(!L||ph.door<=0||nCar<=1)return out;
-    const next=ph.state==='hold'?L:t.g.legs[(t.leg+1)%t.g.legs.length],nA=ph.state==='dwell'?paxCount(this.legLoad(t,L,model,W)):0,nB=paxCount(this.legLoad(t,next,model,W)),stop=t.id*131+t.leg*17,pal=this.pal||PED_COLORS;
+    out=out||[];out.length=0;const L=t.g.legs[t.leg];if(!L||ph.door<=0||ph.state==='run'||nCar<=1)return out;
+    // 一次停站期间上下客人数固定：只在到站时算一次，行驶途中没有乘客动画
+    const key=t.g.r+':'+t.leg+':'+L.k+':'+(L.rev?1:0);
+    if(!t._dwell||t._dwell.key!==key){
+      const next=ph.state==='hold'?L:t.g.legs[(t.leg+1)%t.g.legs.length];
+      t._dwell={key:key,nA:ph.state==='dwell'?paxCount(this.legLoad(t,L,model,W)):0,nB:paxCount(this.legLoad(t,next,model,W))};
+    }
+    const nA=t._dwell.nA,nB=t._dwell.nB,stop=t.id*131+t.leg*17,pal=this.pal||PED_COLORS;
     for(let j=0;j<nA+nB;j++){
       const board=j>=nA,jj=board?j-nA:j,p=board?1-(ph.until-(DOOR.closeLead+.4+jj*DOOR.gap))/DOOR.walk:(ph.since-(DOOR.delay+DOOR.open*.5+jj*DOOR.gap))/DOOR.walk;
       if(p<=0||p>=1)continue;
@@ -359,7 +379,7 @@
       if (hl && hl !== rt.lineId) alpha *= 0.3;
       ctx.globalAlpha = alpha;
       this.phase(t,t.animation||(t.animation={}));Object.assign(ph,t.animation);t.door=ph.door;t.state=ph.state;
-      const L=t.g.legs[t.leg],lf=z>=14&&L?this.legLoad(t,L,model,W):0,look=this.trainLook(t,R,lf);
+      const L=t.g.legs[t.leg],lf=z>=14&&L?this.legOccupancy(t,L,model,W):0,look=this.trainLook(t,R,lf);
       const riders=t.riders||(t.riders=[]);riders.length=0;
       if(showPax&&paxBudget>0)this.trainRiders(t,ph,nCar,model,W,riders);
       if(riders.length>paxBudget)riders.length=paxBudget;paxBudget-=riders.length;t.riderFrame=R.frame;

@@ -8651,3 +8651,34 @@ Object.assign(window.CM.I18N_EN, {
   "升级为正式站前，预留站仍然通过不停靠、不提供换乘、不计客流；补交差价补建后，编译结果自动按正式站规则启用换乘与客流计算，不必重建线路。": "Until upgraded, a reserved station is still passed through without stopping, offers no interchange and is excluded from ridership. After paying the difference to build it out, compilation automatically applies the normal station rules for interchanges and ridership - no need to rebuild the lines.",
   "所有「这座站是否对外服务」的判断统一走同一个入口，编译、交通求解、经济结算与界面共用；旧存档没有开关字段时一律按启用处理。": "Every check of whether a station is in service now goes through one shared rule used by compilation, traffic solving, economic settlement and the UI; old saves without the switch field are treated as enabled.",
 });
+
+// —— v4.6 更新公告 ——
+Object.assign(window.CM.I18N_EN, {
+  "速度、客流与交路统计修正，新增交路可查看换乘线路": "Speed, ridership and service statistics fixes; interchange lines shown in the service editor",
+  "轨道设计速度高于列车车型限速时列车照常上线，但整条交路按两者中较小的限速运行：区间用时、周转时间与最低需要列车数随之重算，换用更快的车型即可恢复设计速度。": "When a line's track speed exceeds a train model's top speed, the train can still run, but the whole service uses the lower of the two limits. Leg times, cycle time and the minimum fleet are recalculated, and switching to a faster model restores the design speed.",
+  "列车在区间行驶时载客数锁定，不再随时段权重来回跳动；上下客动画只发生在停靠车站，跟随卡片显示的速度也不会超过车型限速。": "A train's passenger count is locked while it runs between stations, so it no longer flickers as time-of-day weights change. Boarding and alighting animations only happen at stops, and the follow card never shows a speed above the model's limit.",
+  "完全没有列车运营的交路，其上车边与日客流统计都归零；新建线路还没配车时，线路概况、任务与票款分摊不会再凭空产生客流量。": "Services with no trains in operation now contribute zero boardings and zero daily ridership. A newly built line with no assigned trains no longer generates phantom passengers in the line overview, tasks or fare allocation.",
+  "线路「列车运营」页、车队总览与线路概况现在分别显示每条交路的日客流；所有交路相加严格等于本线总客流，环线按顺行、逆行两个方向拆分。": "The line's Train Operations tab, the fleet overview and the line overview now each show daily ridership per service. All services add up exactly to the line total, with loop lines split into clockwise and counter-clockwise directions.",
+  "新增交路页面悬停换乘站会列出该站可换乘的线路与线路色；预留多线接入的站标为「预留换乘」，补建为正式站后才启用换乘。": "In the service editor, hovering an interchange station lists the lines you can transfer to, each in its line colour. Stations reserved for several lines are marked as a planned interchange that only becomes active once built out as a full station.",
+  "新增交路的起讫站下拉与停靠站选择只列正在运营的车站；预留站与已关闭运营的站自动通过不停，编译期也统一过滤，显示、筛选与统计口径一致。": "The service editor's terminal dropdowns and stop chips only list stations currently in service. Reserved and closed stations are passed through without stopping, and compilation applies the same filter, keeping display, selection and statistics consistent.",
+});
+
+// —— v4.6 速度与交路界面文案 ——
+Object.assign(window.CM.I18N_EN, {
+  "各交路客流量相加等于本线日客运量": "Daily ridership across all services adds up to this line's total",
+  "本线日客流 {n} 人次（各交路合计）": "Line daily ridership {n} passengers (sum of all services)",
+  "工作日 {a} · 周末 {b} · 各交路合计": "Weekday {a} · Weekend {b} · sum of all services",
+  "{v0} 列列车不能上线：编组超过本线站台长度，或车型与本线轨道类型不匹配。升级沿线车站，或调往其他线路、出售。": "{v0} trains cannot run: they are too long for this line's platforms or incompatible with its track type. Upgrade stations along the line, or move or sell the trains.",
+  "{v0} 列列车的车型限速低于本线轨道速度，可以上线，但整条交路按较慢的车型限速降速运行（当前实际 {v1} km/h）：换用更快的车型可恢复设计速度。": "{v0} trains have a lower top speed than this line's track, but they can still run. The whole service is slowed to the slowest model (currently {v1} km/h); switching to faster models restores the design speed.",
+  "受配属车型限制，本线实际运行速度 {v0} km/h，低于轨道设计速度。": "Limited by the assigned rolling stock, this line actually runs at {v0} km/h, below its track design speed.",
+  "车型限速 {v0} km/h，上线后按车型限速降速运行": "Model limit {v0} km/h; once in service this line runs at the model's limit",
+  "运行速度：速度越低，允许的转弯半径越小（40 km/h 约 100 m，120 km/h 约 600 m）；轨道设计速度高于车型限速时列车仍可上线，但整条交路按较慢的车型限速降速运行，周转变长、需要的列车更多。": "Running speed: slower lines can take tighter curves (about 100 m at 40 km/h, 600 m at 120 km/h). When a track is faster than the train model, the train still runs but the whole service is slowed to the model's limit, lengthening the cycle and requiring more trains.",
+  "剩下的列车编组超过站台长度，或车型与本线轨道类型不匹配。": "The remaining trains are too long for the platforms or incompatible with this line's track type.",
+  "普通列车不能上 160 高速轨道": "Standard trains cannot run on 160 km/h high-speed track",
+  "160 专用列车，只能在 160 轨道上线": "160 km/h dedicated train; can only run on 160 track",
+  "编组超过站台或轨道类型不匹配": "Too long for the platforms or incompatible with the track type",
+  "悬停换乘站可查看该站可换乘的线路。": "Hover an interchange station to see which lines you can transfer to.",
+  "本站可换乘：": "Transfer to: ",
+  "预留换乘 · 补建为正式站后启用换乘": "Planned interchange - transfers become available once built out as a full station",
+  "悬停查看本站可换乘的线路": "Hover to see the lines available at this station",
+});

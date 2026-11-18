@@ -55,16 +55,21 @@ const line=sample.line;g.clock.y=2010;g.econ.cur.y=2010;g.model.setYear(2010);g.
 g.fleet.trains=[];g.fleet.ver++;g.econ.mode='challenge';g.econ.difficulty='normal';g.econ.funds=1e9;
 const fast=F.available(g.mapId,g.clock.y).find(m=>m.kmh>=100),slow=F.available(g.mapId,g.clock.y).find(m=>m.kmh<100);assert.ok(fast&&slow);
 assert.equal(F.buy(g,null,null,fast.id,4,2).ok,true);const compatible=g.fleet.trains.map(t=>t.id);
-assert.equal(F.buy(g,null,null,fast.id,8,1).ok,true);assert.equal(F.buy(g,null,null,slow.id,4,1).ok,true);
-const fleetBefore=JSON.stringify(g.fleet.trains),plan=F.allocPlan(g);assert.equal(JSON.stringify(g.fleet.trains),fleetBefore);assert.equal(plan.moved,2);assert.equal(plan.left,2);
+assert.equal(F.buy(g,null,null,fast.id,8,1).ok,true);
+const fleetBefore=JSON.stringify(g.fleet.trains),plan=F.allocPlan(g);assert.equal(JSON.stringify(g.fleet.trains),fleetBefore);assert.equal(plan.moved,2);assert.equal(plan.left,1);
 assert.deepEqual(Array.from(plan.needs.flatMap(x=>x.ids)).sort(),compatible.sort());
 const cash=g.econ.funds;assert.equal(F.applyAlloc(g,plan),2);assert.equal(g.econ.funds,cash);
 const fill=F.fillCost(g,F.allocPlan(g));assert.ok(fill.cost>0);const preview=fill.cost;
 for(const x of fill.rows)assert.equal(F.buy(g,x.x.lid,x.x.svc,x.m.id,x.cars,x.n).ok,true);
 assert.ok(Math.abs(cash-g.econ.funds-preview)<1e-5);assert.equal(F.allocPlan(g).unmet,0);
+// v4.6：车型比线路慢不再被排除（只按车型限速降速运行）；160 轨道仍保持 D 型车专属
+assert.equal(F.lineFit(slow,100),true,'v4.6 慢车可以上 100 km/h 普通轨道');
+assert.equal(F.lineFit(fast,160),false,'普通车型不能上 160 高速轨道');
+assert.equal(F.lineFit(F.model('gen-d160'),100),false,'D 型专用车不能上普通轨道');
+assert.equal(F.lineFit(F.model('gen-d160'),160),true,'D 型专用车可以上 160 轨道');
 F.setMode(g,line,'manual');assert.equal(F.allocPlan(g).needs.length,0);F.setMode(g,line,'auto');
 g.fleet.autoAlloc=true;const fleetRoundTrip=C.Game.restore(copy(g.serialize()));assert.equal(fleetRoundTrip.fleet.autoAlloc,true);assert.equal(fleetRoundTrip.econ.funds,g.econ.funds);
-console.log('PASS idle allocation, platform/speed/manual exclusions, previewed purchase cost and saved fleet preference');
+console.log('PASS idle allocation (v4.6: slow models allowed, slower-running), platform/manual exclusions, previewed purchase cost and saved fleet preference');
 
 // v2.5.0 originals get an exact backup; historical fare, accounts, assets and task data survive the upgrade.
 const old=copy(g.serialize());old.rulesRevision=6;delete old.econ.fareMark;delete old.econ.fareAuto;delete old.econ.fareNote;delete old.fleet.autoAlloc;

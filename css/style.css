@@ -3370,8 +3370,12 @@ body.cinema #immExit { top: max(12px, env(safe-area-inset-top)); right: max(12px
 .fo-sv-stops { display: flex; flex-wrap: wrap; gap: 5px; max-height: 188px; overflow-y: auto; }
 .fo-sv-stop { border: 1px dashed var(--line); background: transparent; color: var(--muted); border-radius: 8px; padding: 3px 9px; font-size: 12px; cursor: var(--cur-pointer); }
 .fo-sv-stop.on { border: 1px solid var(--accent); background: var(--accent-soft); color: var(--text); }
-.fo-sv-stop.xfer { font-weight: 700; }
+.fo-sv-stop.xfer { font-weight: 700; border-style: solid; }
+.fo-sv-stop.future { border-color: var(--warn, #d98b24); }
 .fo-sv-stop:disabled { cursor: default; opacity: 1; }
+/* v4.6：悬停换乘站时的可换乘线路提示条（与站点 chip 同一行下方，不挤压布局） */
+.fo-sv-xfer { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; min-height: 22px; margin-top: 6px; line-height: 1.4; }
+.fo-sv-xfer .tag { font-size: 11px; padding: 1px 6px; }
 
 /* 地铁芯入口与过载提醒卡片（v2.5） */
 .br-dock { position: fixed; right: 14px; bottom: calc(16px + env(safe-area-inset-bottom)); z-index: 41; zoom: var(--uiz, 1); display: flex; align-items: center; gap: 8px; pointer-events: none; }

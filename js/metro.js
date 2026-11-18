@@ -551,7 +551,7 @@
         const k = routes.findIndex(function (r) { return r.st[r.st.length - 1] === main; });
         if (k > 0) routes.unshift(routes.splice(k, 1)[0]);
       }
-      return { topo: maxDeg <= 2 ? 'path' : 'branch', routes: routes, stations: nodes, adj: adj, root: root, leaves: leaves, main: main };
+      return { topo: maxDeg <= 2 ? 'path' : 'branch', net: net, routes: routes, stations: nodes, adj: adj, root: root, leaves: leaves, main: main };
     }
     if (E === Vn && maxDeg === 2) {
       let start = (line && line.root && adj.has(line.root)) ? line.root : M.sortIds(nodes.slice())[0];
@@ -566,7 +566,7 @@
         cur = e.other; prevSeg = e.seg;
         if (cur !== start) st.push(cur);
       }
-      return { topo: 'loop', routes: [{ st: st, segs: sg, loop: true }], stations: nodes, adj: adj, root: start };
+      return { topo: 'loop', net: net, routes: [{ st: st, segs: sg, loop: true }], stations: nodes, adj: adj, root: start };
     }
     return { topo: 'invalid', reason: E === Vn ? '环线上不能再接支线（可另建新线路）' : '线路含多个闭环', routes: [], stations: nodes, adj: adj };
   };
@@ -755,18 +755,26 @@
   // 环线的交路只能跳站（首站固定停靠），不能折返。返回所在路线序号与停靠站在路线上的序号；车站已不在线路上时返回 null
   M.svcStops = function (tp, sv) {
     const skip = new Set(sv.skip || []);
+    // v4.6：预留站与已停用站没有站台，不能作为交路中间停靠站；编辑器把它们写进 skip，编译期兜一次底。
+    // 端点（非环线）与首站（环线）必须保留：patternRoute 要靠它们首尾闭合、切出完整几何，
+    // 这些站即使没有站台也照样会被 buildMetro 的 shut 边屏蔽上下客，不会产生客流。
+    const open = function (s) {
+      const st = tp.net && tp.net.stations && tp.net.stations[s];
+      return st ? M.stationOpen(st) : true;
+    };
     for (let ri = 0; ri < tp.routes.length; ri++) {
       const rt = tp.routes[ri], st = rt.st;
       if (sv.via && st.indexOf(sv.via) < 0) continue;
       if (rt.loop) {
         if (sv.from || sv.to) continue;
-        const stops = []; st.forEach(function (s, i) { if (i === 0 || !skip.has(s)) stops.push(i); });
+        const stops = []; st.forEach(function (s, i) { if (i === 0 || (!skip.has(s) && open(s))) stops.push(i); });
         return stops.length >= 2 ? { ri: ri, stops: stops, loop: true } : null;
       }
       let ia = sv.from ? st.indexOf(sv.from) : 0, ib = sv.to ? st.indexOf(sv.to) : st.length - 1;
       if (ia < 0 || ib < 0 || ia === ib) continue;
       if (ia > ib) { const t = ia; ia = ib; ib = t; }
-      const stops = []; for (let i = ia; i <= ib; i++) if (i === ia || i === ib || !skip.has(st[i])) stops.push(i);
+      const stops = [];
+      for (let i = ia; i <= ib; i++) if (i === ia || i === ib || (!skip.has(st[i]) && open(st[i]))) stops.push(i);
       return { ri: ri, stops: stops, ia: ia, ib: ib, loop: false };
     }
     return null;
@@ -1085,18 +1093,51 @@
     return 2 * Math.sqrt(Math.max(1, Lm) / a);
   }
   M.legTime = legTime;
+  // v4.6：实际运行速度 = min(轨道设计速度, 本线配属列车里最慢车型的限速)。
+  // 慢车照样可以上线，只是按车型限速降速运行：区间用时、周转、动画与运力都随这个上限重算。
+  // legVBase 是按轨道设计速度算出的自由流速度，legCurve 是弯道半径给出的物理限速（不随车型变化）。
+  M.timing = function (rt, capKmh) {
+    const mc = CFG.metro, n = rt.legLenM.length, k0 = U.clamp((capKmh > 0 ? capKmh : rt.kmh) / rt.kmh, 0.05, 1);
+    const exact = rt.legVBase && rt.legVBase.length === n && rt.legCurve && rt.legCurve.length === n;
+    const legV = new Array(n), legSec = new Array(n);
+    let runSec = 0;
+    for (let k = 0; k < n; k++) {
+      let v, t;
+      if (exact) { v = Math.min(rt.legVBase[k] * k0, rt.legCurve[k]); t = legTime(rt.legLenM[k], v, mc.accel); }
+      else { v = (rt.legV[k] || 22) * k0; t = legTime(rt.legLenM[k], v, mc.accel); }
+      legV[k] = v; legSec[k] = t; runSec += t;
+    }
+    const ns = rt.stIds.length;
+    const cycleSec = rt.loop ? runSec + mc.dwell * ns : 2 * runSec + 2 * mc.dwell * Math.max(0, ns - 2) + 2 * mc.turnaround;
+    return { legSec: legSec, legV: legV, runSec: runSec, cycleSec: cycleSec };
+  };
+  // 把降速后的时刻表写回编译路线：每次都从「设计速度 + 弯道限速」原始参数重算，不会反复叠加降速
+  M.applyTiming = function (rt, capKmh) {
+    // 测试与预览里可能传入简化的路线对象（没有区间几何），这时不做重算
+    if (!rt || !rt.legLenM || !rt.legLenM.length || !(rt.kmh > 0)) return false;
+    const cap = U.clamp(capKmh > 0 ? capKmh : rt.kmh, 1, rt.kmh);
+    if (rt.runKmh === cap) return false;
+    const t = M.timing(rt, cap);
+    rt.legSec = t.legSec; rt.legV = t.legV; rt.runSec = t.runSec; rt.cycleSec = t.cycleSec; rt.runKmh = cap;
+    return true;
+  };
   // 由全程路线 B 生成一个交路的运营路线：停靠站之外的车站不停车通过（中途不减速，只计首尾一次加减速；不模拟越行站），
   // 编组只受实际停靠车站的站台限制（通过的小站不限制）。设置面板用它预览用时，确认后由 compile 生成
   M.patternRoute = function (C, line, B, sv, plan) {
     const mc = CFG.metro, stops = plan.stops, n = stops.length, loop = !!B.loop, last = B.legSec.length;
     const seq = loop ? stops.concat([last]) : stops, i0 = seq[0], i1 = seq[seq.length - 1];
-    const legLenM = [], legSec = [], legSeg = [], legSegs = [], stopDist = [], stopPt = [];
+    const legLenM = [], legSec = [], legSeg = [], legSegs = [], stopDist = [], stopPt = [], legV = [], legVBase = [], legCurve = [];
     for (const i of seq) { stopDist.push(B.stopDist[i] - B.stopDist[i0]); stopPt.push(B.stopPt[i] - B.stopPt[i0]); }
     for (let k = 0; k + 1 < seq.length; k++) {
       const p = seq[k], q = seq[k + 1], refs = [];
-      let L = 0, T = 0, vm = 0;
-      for (let i = p; i < q; i++) { L += B.legLenM[i]; T += B.legLenM[i] / B.legV[i]; vm = Math.max(vm, B.legV[i]); refs.push(B.segRefs[i]); }
+      let L = 0, T = 0, vm = 0, vb = 0, cv = Infinity;
+      for (let i = p; i < q; i++) {
+        L += B.legLenM[i]; T += B.legLenM[i] / B.legV[i]; vm = Math.max(vm, B.legV[i]); refs.push(B.segRefs[i]);
+        vb = Math.max(vb, B.legVBase ? B.legVBase[i] : B.legV[i]);
+        cv = Math.min(cv, B.legCurve ? B.legCurve[i] : Infinity);
+      }
       legLenM.push(L); legSeg.push(refs[0]); legSegs.push(refs);
+      legV.push(vm); legVBase.push(vb); legCurve.push(cv);
       legSec.push(q === p + 1 ? B.legSec[p] : Math.max(T + (B.legV[p] + B.legV[q - 1]) / (2 * mc.accel), legTime(L, vm, mc.accel)));
     }
     const pts = B.pts.slice(B.stopPt[i0], B.stopPt[i1] + 1), hs = B.hs.slice(B.stopPt[i0], B.stopPt[i1] + 1), cum = U.cumLen(pts);
@@ -1106,12 +1147,14 @@
     return {
       id: 0, lineId: B.lineId, line: line, color: line.color, label: M.svcLabel(line, sv), loop: loop, branch: false, main: false, svc: sv.id, baseId: B.id, skipped: (loop ? B.stIds.length : plan.ib - plan.ia + 1) - n,
       nStops: stIds.filter(function (sid) { return M.stationOpen(C.net.stations[sid]); }).length,   // 实际停靠站数（预留站与停用站通过不停）
-      lvPen: stops.map(function (i) { return B.lvPen[i]; }), stIds: stIds, stIdx: stIdx, segRefs: legSeg, legSegs: legSegs, pts: pts, hs: hs, cum: cum, stopDist: stopDist, stopPt: stopPt, legLenM: legLenM, legSec: legSec, legV: B.legV,
+      lvPen: stops.map(function (i) { return B.lvPen[i]; }), stIds: stIds, stIdx: stIdx, segRefs: legSeg, legSegs: legSegs, pts: pts, hs: hs, cum: cum, stopDist: stopDist, stopPt: stopPt, legLenM: legLenM, legSec: legSec, legV: legV, legVBase: legVBase, legCurve: legCurve, runKmh: B.runKmh || B.kmh,
       cars: minCars, cap: minCars * mc.carCap, runSec: runSec, cycleSec: loop ? runSec + mc.dwell * n : 2 * runSec + 2 * mc.dwell * Math.max(0, n - 2) + 2 * mc.turnaround, lenM: cum[cum.length - 1] * CFG.CELL_M, kmh: B.kmh, opsK: B.opsK,
     };
   };
-  M.compile = function (net, city) { return M.withSegIndex([net], function () { return compile(net, city); }); };
-  function compile(net, city) {
+  // runKmh（可选）：各线路当前的实际运行速度上限 min(轨道设计速度, 配属列车车型限速)。
+  // 缺省按轨道设计速度编译；Fleet 每次重算时刻表时也会从 legVBase/legCurve 复核，保证两处口径一致。
+  M.compile = function (net, city, runKmh) { return M.withSegIndex([net], function () { return compile(net, city, runKmh); }); };
+  function compile(net, city, runKmh) {
     const C = { net: net, stations: [], sIndex: new Map(), segs: new Map(), lines: [], routes: [], topo: new Map() };
     const ids = M.sortIds(Object.keys(net.stations));
     ids.forEach(function (id, k) { C.sIndex.set(id, k); C.stations.push(net.stations[id]); });
@@ -1138,9 +1181,11 @@
       C.lines.push(line);
       if (tp.topo === 'invalid' || tp.topo === 'empty') continue;
       if (tp.routes.some(function (rt) { return rt.segs.some(function (ref) { return !C.segs.has(ref.id); }); })) continue;
-      const vk = M.lineKmh(line) / 80, grade = M.speedGrade(line), bases = [];   // 运行速度按建设方式的基准速度等比调整（未设定为 80 km/h，即基准速度）
+      const designKmh = M.lineKmh(line), grade = M.speedGrade(line), bases = [];   // 运行速度按建设方式的基准速度等比调整（未设定为 80 km/h，即基准速度）
+      // v4.6：轨道设计速度是上限，配属列车里最慢的车型会进一步压低实际运行速度；慢车仍可上线，只是降速运行
+      const cap0 = U.clamp(runKmh && runKmh[lid] > 0 ? runKmh[lid] : designKmh, 1, designKmh), kv = cap0 / 80;
       tp.routes.forEach(function (rt, ri) {
-        const pts = [], hs = [], stopDist = [0], stopPt = [0], legLenM = [], legSec = [], legSeg = [], legV = [];
+        const pts = [], hs = [], stopDist = [0], stopPt = [0], legLenM = [], legSec = [], legSeg = [], legV = [], legVBase = [], legCurve = [];
         let minCars = 8, length = 0;
         for (let k = 0; k < rt.segs.length; k++) {
           const ref = rt.segs[k], cs = C.segs.get(ref.id);
@@ -1152,9 +1197,11 @@
           }
           stopDist.push(length); stopPt.push(pts.length - 1);
           const Lm = cs.g.lenM;
-          let vmax = mc.vmax[cs.seg.type] * vk;
-          if (isFinite(cs.g.minRadiusM)) vmax = Math.min(vmax, Math.max(8, Math.sqrt(mc.latAccel * cs.g.minRadiusM)));
+          const baseV = mc.vmax[cs.seg.type] * designKmh / 80;
+          const curveV = isFinite(cs.g.minRadiusM) ? Math.max(8, Math.sqrt(mc.latAccel * cs.g.minRadiusM)) : Infinity;
+          const vmax = Math.min(mc.vmax[cs.seg.type] * kv, curveV);
           legLenM.push(Lm); legSec.push(legTime(Lm, vmax, mc.accel)); legSeg.push(ref); legV.push(vmax);
+          legVBase.push(baseV); legCurve.push(curveV);
         }
         const stIdx = rt.st.map(function (s) { return C.sIndex.get(s); });
         for (const s of rt.st) minCars = Math.min(minCars, mc.carsBySize[net.stations[s].size]);
@@ -1172,9 +1219,9 @@
         const lvPen = rt.st.map(function (sid) { const st = net.stations[sid]; return M.platType(st, lid) !== st.type ? 1 : 0; });
         const route = {
           id: C.routes.length, lineId: lid, line: line, color: line.color, label: label, loop: rt.loop, branch: tp.topo === 'branch', main: tp.main != null && rt.st[rt.st.length - 1] === tp.main, lvPen: lvPen,
-          stIds: rt.st, stIdx: stIdx, segRefs: legSeg, legSegs: legSeg.map(function (ref) { return [ref]; }), pts: pts, hs: hs, cum: cum, stopDist: stopDist, stopPt: stopPt, legLenM: legLenM, legSec: legSec, legV: legV,
+          stIds: rt.st, stIdx: stIdx, segRefs: legSeg, legSegs: legSeg.map(function (ref) { return [ref]; }), pts: pts, hs: hs, cum: cum, stopDist: stopDist, stopPt: stopPt, legLenM: legLenM, legSec: legSec, legV: legV, legVBase: legVBase, legCurve: legCurve,
           nStops: rt.st.filter(function (sid) { return M.stationOpen(net.stations[sid]); }).length,   // 实际停靠站数（预留站与停用站通过不停）
-          cars: minCars, cap: minCars * mc.carCap, runSec: runSec, cycleSec: cycleSec, lenM: cum[cum.length - 1] * CFG.CELL_M, kmh: grade.kmh, opsK: grade.ops,
+          cars: minCars, cap: minCars * mc.carCap, runSec: runSec, cycleSec: cycleSec, lenM: cum[cum.length - 1] * CFG.CELL_M, kmh: designKmh, runKmh: cap0, opsK: grade.ops,
         };
         C.routes.push(route); bases.push(route);
       });

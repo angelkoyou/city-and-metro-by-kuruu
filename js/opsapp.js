@@ -70,7 +70,7 @@
     for (const s of info) {
       let short = Math.max(0, s.peakNeed - s.avail); if (short <= 0) continue;
       const use = [];
-      for (let i = idle.length - 1; i >= 0 && short > 0; i--) { const t = idle[i], need = s.rt.kmh > 80 ? s.rt.kmh : 0; if (F.canAutoPick(g, F.model(t.model)) && t.cars <= s.rt.cars && F.model(t.model).kmh >= need) { use.push(t.id); idle.splice(i, 1); short--; } }
+      for (let i = idle.length - 1; i >= 0 && short > 0; i--) { const t = idle[i], m = F.model(t.model); if (F.canAutoPick(g, m) && t.cars <= s.rt.cars && F.lineFit(m, s.rt.kmh)) { use.push(t.id); idle.splice(i, 1); short--; } }
       if (use.length) { steps.push({ type: 'move', ids: use, line: lid, svc: s.id }); moved += use.length; }
       if (short > 0) {
         const m = F.recommend(g.mapId, y, s.rt.kmh);

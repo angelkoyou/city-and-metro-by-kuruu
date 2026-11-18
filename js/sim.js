@@ -1462,6 +1462,8 @@
     // 车站日客流（stDaily）按旧网络统计，到下一次 computeDaily 前与新网络的车站编号不对应
     if (!keepState || !this.stDaily || this.stDaily.inn.length !== net.N) this.dailyStale = true;
     this.version++;
+    // 线网刚重建时立刻按当前车队重算发车频率：没有列车的线路 freq 归零，客流求解不会在第一轮误把它当成有车
+    if (this.fleetSource) this.applyFleet(true);
   };
 
   // 地铁出行习惯（v2.3）：每个小区取步行可达车站里开通最久的一座，按开通年数算成熟度（约 years 年达到满值，先快后慢），
@@ -1505,7 +1507,7 @@
         const f = Math.max(0.5, fr);
         const w = 60 / (2 * f);
         cost[e] = prm.waitW * w + prm.tpen + P.stDelay[net.eSt[e]];
-        if (stopped && net.isSvc[net.eRoute[e]]) cost[e] = 1e5;   // 加开的交路没有投入列车时不能上车（不算长时间候车）
+        if (stopped) cost[e] = 1e5;   // v4.6：完全没有列车运营的交路不能上车（全程交路与加开交路同规则），避免无车线路仍产生客流
         tAct[e] = w + P.stDelay[net.eSt[e]] * 0.5;
         if (net.eT0[e] > 0) { cost[e] += prm.walkW * net.eT0[e]; tAct[e] += net.eT0[e]; }   // 天地换乘的垂直通道
       } else if (ty === 1) {
@@ -2003,11 +2005,13 @@
     D.dt = 'avg';
     return D;
   };
-  // 按车站汇总日客流
+  // 按车站汇总日客流。
+  // v4.6：某条交路在某个时段一列列车都没投入时，那个时段不计它的上车人次；完全没有列车运营的线路日客流为 0。
+  // routeBoardDir 把环线两个方向按该时段实际发车频率拆开，保证「各交路客流之和 = 线路总客流」。
   Model.prototype.stationDaily = function (per, net) {
     const N = net.N;
     const sIn = new Float32Array(N), sOut = new Float32Array(N), sX = new Float32Array(N), peak = new Float32Array(N);
-    const rBoard = new Float32Array(net.R);
+    const rBoard = new Float32Array(net.R), rDir = new Float32Array(2 * net.R);
     for (let p = 0; p < NP; p++) {
       const P = per[p], h = this.pHours[p] * (p === 3 ? 0.9 : 1);
       if (!P.stIn || P.stIn.length !== N) continue;
@@ -2016,9 +2020,20 @@
         const f = P.stIn[s] + P.stOut[s] + P.stXfer[s];
         if (f > peak[s]) peak[s] = f;
       }
-      for (let r = 0; r < net.R; r++) { const be = net.boardEdge[r]; for (let q = 0; q < be.length; q++) rBoard[r] += P.load[be[q]] * h; }
+      for (let r = 0; r < net.R; r++) {
+        const f = P.freq && P.freq.length === net.R ? P.freq[r] : 0;
+        if (!(f > 0)) continue;
+        const be = net.boardEdge[r];
+        let b = 0; for (let q = 0; q < be.length; q++) b += P.load[be[q]];
+        b *= h; rBoard[r] += b;
+        const rt = net.C.routes[r];
+        if (rt.loop && P.freqDir && P.freqDir.length === 2 * net.R) {
+          const f0 = P.freqDir[2 * r], f1 = P.freqDir[2 * r + 1], s = f0 + f1, w0 = s > 0 ? f0 / s : 0.5;
+          rDir[2 * r] += b * w0; rDir[2 * r + 1] += b * (1 - w0);
+        } else { rDir[2 * r] += b; rDir[2 * r + 1] += b; }
+      }
     }
-    return { inn: sIn, out: sOut, xfer: sX, peak: peak, routeBoard: rBoard };
+    return { inn: sIn, out: sOut, xfer: sX, peak: peak, routeBoard: rBoard, routeBoardDir: rDir };
   };
   // 重要设施与小区吸引的日汇总（设施：到达 inn / 离开 out 及其中乘地铁的部分、分目的到达；小区：分目的吸引与地铁部分、出发总量）
   Model.prototype.attractDaily = function (per) {
@@ -2047,7 +2062,7 @@
       const mix = function (x, y) { const o = new Float32Array(x.length); for (let i = 0; i < x.length; i++) o[i] = x[i] * W.wd + y[i] * W.we; return o; };
       const peak = new Float32Array(net.N); for (let i = 0; i < net.N; i++) peak[i] = Math.max(a.peak[i], b.peak[i]);
       this.stDailyWk = a; this.stDailyWe = b;
-      this.stDaily = { inn: mix(a.inn, b.inn), out: mix(a.out, b.out), xfer: mix(a.xfer, b.xfer), peak: peak, routeBoard: mix(a.routeBoard, b.routeBoard) };
+      this.stDaily = { inn: mix(a.inn, b.inn), out: mix(a.out, b.out), xfer: mix(a.xfer, b.xfer), peak: peak, routeBoard: mix(a.routeBoard, b.routeBoard), routeBoardDir: mix(a.routeBoardDir, b.routeBoardDir) };
       this.dailyStale = false;
     }
     this.facDaily = { wd: this.attractDaily(this.ctxs.wd.per), we: this.attractDaily(this.ctxs.we.per) };
@@ -2145,7 +2160,7 @@
   Model.dirFreq = function (P, net, r, q) { const rt = net.C.routes[r]; return P.freqDir && P.freqDir.length === 2 * net.R ? P.freqDir[2 * r + (rt.loop ? (q & 1) : 0)] : P.freq[r]; };
   // 车队变化（购买、调拨、出售、手动设定）后立即按新的列车数重算各时段频率与运营费用，不等下个月的交通求解；
   // 所需频率（needDir）沿用上次求解结果，客流分配在下次求解时随之调整
-  Model.prototype.applyFleet = function () {
+  Model.prototype.applyFleet = function (quiet) {
     const net = this.net; if (!net || !net.R) return;
     const plan = this.fleetOf(net), mc = CFG.metro; if (!plan) return;
     const sets = [this.ctxs.wd.per, this.ctxs.we.per]; if (this.results) sets.push(this.results.wd.per, this.results.we.per);
@@ -2161,6 +2176,9 @@
         P.freq[r] = nd === 2 ? (P.freqDir[2 * r] + P.freqDir[2 * r + 1]) / 2 : P.freqDir[2 * r];
       }
     }
+    // quiet：线网刚重建时只同步频率，让无车交路的 freq 立即归零；此时 stDaily 还可能与新网络车站编号不对应，
+    // 且 setNetwork 已经 wake/version++，不应在这里再触发一次日统计或后台求解
+    if (quiet) return;
     if (!this.solving && !this.refreshing && this.ctxs.wd.per.every(function (P) { return P.stats; })) this.computeDaily();
     this.version++;
     if (this.settled) this.wake(1);   // 后台再求解一轮，让客流随新的发车间隔重新分配
@@ -2275,6 +2293,9 @@
             const h = self.pHours[p] * (p === 3 ? 0.9 : 1);
             for (let r = 0; r < net.R; r++) {
               const lid = net.C.routes[r].lineId;
+              // v4.6：与 stationDaily 同口径，本时段没有列车运营的交路不计上车人次
+              const fr = per[p].freq;
+              if (fr && fr.length === net.R && !(fr[r] > 0)) continue;
               let s = 0; const be = net.boardEdge[r];
               for (let q = 0; q < be.length; q++) s += per[p].load[be[q]];
               m.set(lid, (m.get(lid) || 0) + s * h * wt);

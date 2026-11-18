@@ -917,7 +917,7 @@
         let board = 0; if (daily) for (const r of routes) board += daily.routeBoard[r[1]];
         const grid = h('div', { class: 'stat-grid' });
         let bw = 0, be = 0; if (daily && g.model.stDailyWk && g.model.stDailyWe) for (const r of routes) { bw += g.model.stDailyWk.routeBoard[r[1]]; be += g.model.stDailyWe.routeBoard[r[1]]; }
-        grid.append(this.stat('日客运量（上车，周平均）', daily ? U.fmtPeople(board) + ' 人次' : '计算中…', daily ? '工作日 ' + U.fmtPeople(bw) + ' · 周末 ' + U.fmtPeople(be) : ''));
+        grid.append(this.stat('日客运量（上车，周平均）', daily ? U.fmtPeople(board) + ' 人次' : '计算中…', daily ? '工作日 ' + U.fmtPeople(bw) + ' · 周末 ' + U.fmtPeople(be) + ' · 各交路合计' : ''));
         // v3.2：收支口径抽到 lineEcon，地铁芯的线路管理列表与这里共用同一份计算
         const ec = this.lineEcon(lid);
         const sgn = function (v) { return (v >= 0 ? '+' : '−') + U.fmtMoney(Math.abs(v)); };
