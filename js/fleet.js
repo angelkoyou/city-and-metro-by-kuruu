@@ -979,6 +979,28 @@
     return Array.from(m.values()).sort(function (a, b) { return b.ids.length - a.ids.length; });
   };
   const lineColor = function (g, lid) { const L = g.net.lines[lid]; return L ? AX.line(L) : '#2f6fa8'; };
+  // v4.9：车型最高时速徽标。列车运营页的配属列车、车队总览的车型列、出售/调入面板与购车卡片统一用它，
+  // 保证「每个运行车型的展示项」都能一眼看到车型限速（线路设计速度更高时整条交路按这个速度运行）。
+  // compact 版只写「80 km/h」，用于窄表格；完整版带闪电图标与「最高」前缀。
+  const speedChip = function (m, compact) {
+    return h('span', { class: 'fo-kmh' + (compact ? ' xs' : ''), 'data-speed': m.kmh, 'data-tip': '车型最高时速 {v0} km/h'.replace('{v0}', m.kmh) },
+      compact ? null : ic('bolt', 11),
+      h('b', null, compact ? (m.kmh + ' km/h') : '最高 {v0} km/h'.replace('{v0}', m.kmh)));
+  };
+  // 车型摘要行（配属列车 / 出售 / 调入共用）：左图 + 名称与最高时速 + 定员与超龄标签 + 右侧操作。
+  // 三处列表共用同一结构，避免字号、间距、配色各自漂移。
+  const trainRow = function (x, color, acts, opts) {
+    opts = opts || {};
+    const meta = [h('span', { class: 'tag' }, '每列定员 {v0} 人'.replace('{v0}', U.fmtInt(x.m.cap * x.cars))),
+      x.old ? h('span', { class: 'tag warn' }, '{v0} 列超龄'.replace('{v0}', x.old)) : null];
+    if (opts.meta) for (const n of opts.meta) meta.push(n);
+    return h('div', { class: 'fo-unit' + (opts.cls ? ' ' + opts.cls : ''), 'data-model': x.m.id },
+      h('span', { class: 'fo-pic', html: F.sideSVG(x.m, color, 72) }),
+      h('div', { class: 'fo-unit-h' }, h('b', null, F.shortOf(x.m) + ' · ' + x.cars + ' 节 × ' + x.ids.length), speedChip(x.m)),
+      h('div', { class: 'fo-unit-meta' }, meta),
+      opts.note || null,
+      h('div', { class: 'fo-unit-acts' }, acts));
+  };
   // 线路详情「列车运营」分页
   const sfx = function (n) { if (CM.Sound) CM.Sound.play(n); };
   UI.prototype.lineOpsTab = function (el, lid) {
@@ -1078,11 +1100,10 @@
     const pl = F.plan(g, g.model.net) || [], onRoute = new Set();
     const unitRow = function (x, warn) {
       const out = function (k) { sfx('trainMove'); F.move(g, x.ids.slice(-k), null, null); self.toast('已调回车辆段 ' + k + ' 列', 'info'); done(); };
-      return h('div', { class: 'fo-unit' },
-        h('span', { class: 'fo-pic', html: F.sideSVG(x.m, lineColor(g, lid), 84) }),
-        h('div', { class: 'grow' }, h('b', null, F.shortOf(x.m) + ' · ' + x.cars + ' 节 × ' + x.ids.length), h('small', { class: warn ? 'bad' : '' }, warn || ('每列定员 ' + U.fmtInt(x.m.cap * x.cars) + ' 人' + (x.old ? ' · ' + x.old + ' 列超龄' : '')))),
-        h('button', { class: 'btn sm ghost', 'data-tip': '调回车辆段（之后可配给其他线路）', onclick: function () { if (x.ids.length === 1) out(1); else self.showTrainQty({ title: '调回车辆段 · ' + F.shortOf(x.m), icon: 'train', max: x.ids.length, btn: '调出', note: function (k) { return k + ' 列调回车辆段，之后可配给其他线路。'; }, apply: out }); } }, '调出'),
-        h('button', { class: 'btn sm ghost', 'data-tip': '按残值出售，每列约 ' + U.fmtMoney(x.value / x.ids.length), onclick: function () { self.showTrainSell(x, done); } }, '出售'));
+      return trainRow(x, lineColor(g, lid), [
+        h('button', { class: 'btn sm ghost', 'data-tip': '调回车辆段（之后可配给其他线路）', onclick: function () { if (x.ids.length === 1) out(1); else self.showTrainQty({ title: '调回车辆段 · ' + F.shortOf(x.m), icon: 'train', model: x.m, cars: x.cars, max: x.ids.length, btn: '调出', note: function (k) { return k + ' 列调回车辆段，之后可配给其他线路。'; }, apply: out }); } }, '调出'),
+        h('button', { class: 'btn sm ghost', 'data-tip': '按残值出售，每列约 ' + U.fmtMoney(x.value / x.ids.length), onclick: function () { self.showTrainSell(x, done); } }, '出售')
+      ], { note: warn ? h('small', { class: 'bad fo-unit-note' }, warn) : null });
     };
     for (const s of info) {
       const card = h('div', { class: 'fo-svc' });
@@ -1348,6 +1369,7 @@
     const q = qtyInput(1, o.max, function (k) { n = k; upd(); });
     upd();
     this.openScreen(h('div', { class: 'card' }, this.cardHead(o.icon, 'b-blue', o.title),
+      o.model ? h('div', { class: 'fo-qty-spec' }, speedChip(o.model), h('span', { class: 'tag' }, '每列定员 {v0} 人'.replace('{v0}', U.fmtInt(o.model.cap * (o.cars || 8))))) : null,
       h('div', { class: 'fo-qty-row' }, h('small', null, '数量'), q.el, h('span', { class: 'tiny muted' }, '共 ' + o.max + ' 列'), h('button', { class: 'btn sm ghost', onclick: function () { q.set(o.max); } }, '全部')),
       noteEl,
       h('div', { class: 'modal-actions' }, h('button', { class: 'btn', onclick: function () { self.closeScreen(); } }, '取消'), h('button', { class: 'btn primary', onclick: function () { self.closeScreen(); o.apply(n); } }, ic('check', 14), o.btn))), function () { self.closeScreen(); });
@@ -1357,7 +1379,7 @@
   UI.prototype.showTrainSell = function (x, done) {
     const g = this.g(), self = this;
     const worth = function (k) { const pick = x.ids.slice(0, k); let v = 0; for (const t of g.fleet.trains) if (pick.indexOf(t.id) >= 0) v += F.residual(g, t); return v; };
-    this.showTrainQty({ title: '出售列车 · ' + F.shortOf(x.m) + ' ' + x.cars + ' 节', icon: 'train', max: x.ids.length, btn: '出售', note: function (k) { return '先卖最旧的 ' + k + ' 列，按残值回收约 ' + U.fmtMoney(worth(k)) + '。'; },
+    this.showTrainQty({ title: '出售列车 · ' + F.shortOf(x.m) + ' ' + x.cars + ' 节', icon: 'train', model: x.m, cars: x.cars, max: x.ids.length, btn: '出售', note: function (k) { return '先卖最旧的 ' + k + ' 列，按残值回收约 ' + U.fmtMoney(worth(k)) + '。'; },
       apply: function (k) { const r = F.sell(g, x.ids.slice(0, k)); if (r.ok) { sfx('trainSell'); self.toast('已出售 ' + r.n + ' 列，回收 ' + U.fmtMoney(r.value), 'good'); } done(); } });
   };
   // 车辆段智能分配：先看方案再确认；分配后还差的可以一次买够
@@ -1400,7 +1422,11 @@
           : h('span', { class: 'tiny muted' }, (m.maps ? '本市车型' : '通用车型') + ' · ' + m.from + (m.to < 9999 ? '–' + m.to : ' 年起')),
         // v4.4：城市特色车型要先在购车窗口买过，才会被自动配置 / 智能分配启用
         m.maps && !F.ownsModel(g, m) ? h('span', { class: 'tiny muted' }, '尚未购置：买过之后才参与自动配置') : null,
-        h('span', { class: 'tiny' }, '每节 ' + m.cap + ' 人 · ' + m.kmh + ' km/h · 运营成本 ×' + m.ops.toFixed(2)),
+        // v4.9：参数拆成标签 + 最高时速徽标，比一行长文本更好扫读
+        h('span', { class: 'fo-model-spec' },
+          h('span', { class: 'tag' }, '每节 ' + m.cap + ' 人'),
+          speedChip(m),
+          h('span', { class: 'tag' }, '运营成本 ×' + m.ops.toFixed(2))),
         h('span', { class: 'tiny muted' }, F.descOf(m))];
       if (lock) return h('div', { class: 'fo-model locked' }, kids);
       return h('button', { class: 'fo-model' + (m === sel ? ' on' : ''), onclick: function () { sel = m; cars = m.fixedCars ? Math.min(maxCars, m.fixedCars) : Math.min(maxCars, m.max, Math.max(cars, 4)); draw(); } }, kids);
@@ -1468,12 +1494,14 @@
         const lineKmh = CM.Metro.lineKmh(g.net.lines[lid]);
         for (const x of groupTrains(g, s.list)) {
           const m = x.m, tooLong = x.cars > maxCars, badTrack = !F.lineFit(m, lineKmh), slow = lineKmh > 80 && m.kmh < lineKmh, ok = !tooLong && !badTrack;
-          box.appendChild(h('div', { class: 'fo-unit' },
-            h('span', { class: 'fo-pic', html: F.sideSVG(m, lineColor(g, lid), 84) }),
-            h('div', { class: 'grow' }, h('b', null, F.shortOf(m) + ' · ' + x.cars + ' 节 × ' + x.ids.length),
-              !ok ? h('small', { class: 'bad' }, tooLong ? '编组超过本线站台长度（最长 ' + maxCars + ' 节）' : (m.only160 ? '160 专用列车，只能在 160 轨道上线' : '普通列车不能上 160 高速轨道')) : (slow ? h('small', { class: 'muted' }, '车型限速 {v0} km/h，上线后按车型限速降速运行'.replace('{v0}', m.kmh)) : null)),
+          box.appendChild(trainRow(x, lineColor(g, lid), [
             h('button', { class: 'btn sm', disabled: ok ? null : true, onclick: function () { sfx('trainMove'); F.move(g, [x.ids[x.ids.length - 1]], lid, svc); draw(); self.markUnsaved(); } }, '调入 1 列'),
-            x.ids.length > 1 ? h('button', { class: 'btn sm ghost', disabled: ok ? null : true, onclick: function () { sfx('trainMove'); F.move(g, x.ids.slice(), lid, svc); draw(); self.markUnsaved(); } }, '全部') : null));
+            x.ids.length > 1 ? h('button', { class: 'btn sm ghost', disabled: ok ? null : true, onclick: function () { sfx('trainMove'); F.move(g, x.ids.slice(), lid, svc); draw(); self.markUnsaved(); } }, '全部') : null
+          ], {
+            cls: ok ? '' : 'off',
+            note: !ok ? h('small', { class: 'bad fo-unit-note' }, tooLong ? '编组超过本线站台长度（最长 ' + maxCars + ' 节）' : (m.only160 ? '160 专用列车，只能在 160 轨道上线' : '普通列车不能上 160 高速轨道'))
+              : (slow ? h('small', { class: 'muted fo-unit-note' }, '车型限速 {v0} km/h，上线后按车型限速降速运行'.replace('{v0}', m.kmh)) : null)
+          }));
         }
       }
       box.appendChild(h('div', { class: 'modal-actions' }, h('button', { class: 'btn primary', onclick: function () { self.closeScreen(); self.scheduleAutosave(); self.rerenderPage(); } }, '完成')));
@@ -1510,24 +1538,26 @@
       if (!s.rt.stIds.length) return '';
       return s.skipped ? '停靠 ' + s.stops + ' 站 · 通过 ' + s.skipped + ' 站' : '区间 · ' + s.stops + ' 站';
     };
-    // 车型 × 数量：主行「A1 型 ×12」，次行写编组与超龄（窄侧栏里也放得下）
+    // 车型 × 数量：每个车型单独一行，右侧跟最高时速徽标（窄列里也能看清是哪一款车、能跑多快）；
+    // 末行补编组与超龄，避免信息挤压在名称里
     const kindsCell = function (list) {
       if (!list.length) return h('td', { class: 'tiny muted' }, '—');
       const gs = groupTrains(g, list), cars = [];
       for (const x of gs) if (cars.indexOf(x.cars) < 0) cars.push(x.cars);
       const oldN = gs.reduce(function (a, x) { return a + x.old; }, 0);
       return h('td', { class: 'tiny' },
-        h('span', null, gs.map(function (x) { return F.shortOf(x.m) + ' ×' + x.ids.length; }).join(' · ')),
+        h('div', { class: 'fo-kindlist' }, gs.map(function (x) {
+          return h('span', { class: 'fo-kind', 'data-model': x.m.id }, h('span', { class: 'fo-kind-n' }, F.shortOf(x.m) + ' ×' + x.ids.length), speedChip(x.m, true));
+        })),
         h('small', { class: 'muted' }, cars.join('/') + ' 节' + (oldN ? ' · 超龄 ' + oldN : '')));
     };
     // 卖出某个交路（或某条线路）的列车：沿用原来的残值出售弹窗，按车型与编组分组
     const sellGroup = function (lid, title, list) {
       const box = h('div');
       if (!list.length) box.appendChild(h('div', { class: 'note' }, '这里没有配属列车。'));
-      for (const x of groupTrains(g, list)) box.appendChild(h('div', { class: 'fo-unit' },
-        h('span', { class: 'fo-pic', html: F.sideSVG(x.m, lineColor(g, lid), 84) }),
-        h('div', { class: 'grow' }, h('b', null, F.shortOf(x.m) + ' · ' + x.cars + ' 节 × ' + x.ids.length), h('small', null, '残值约 ' + U.fmtMoney(x.value) + (x.old ? ' · ' + x.old + ' 列超龄' : ''))),
-        h('button', { class: 'btn sm ghost', onclick: function () { self.showTrainSell(x, function () { self.closeScreen(); refresh(); }); } }, '出售')));
+      for (const x of groupTrains(g, list)) box.appendChild(trainRow(x, lineColor(g, lid), [
+        h('button', { class: 'btn sm ghost', onclick: function () { self.showTrainSell(x, function () { self.closeScreen(); refresh(); }); } }, '出售')
+      ], { meta: [h('span', { class: 'tag' }, '残值约 {v0}'.replace('{v0}', U.fmtMoney(x.value)))] }));
       box.appendChild(h('div', { class: 'modal-actions' }, h('button', { class: 'btn primary', onclick: function () { self.closeScreen(); refresh(); } }, '完成')));
       if (CM.I18n) CM.I18n.localize(box);
       self.openScreen(h('div', { class: 'card wide' }, self.cardHead('train', 'b-blue', '出售列车 · ' + title), h('div', { class: 'note' }, '出售按残值回收（买价的 75% 起逐年折旧，最低 8%）；超龄列车的运营与维护费用 ×1.25。'), box), function () { self.closeScreen(); refresh(); });
