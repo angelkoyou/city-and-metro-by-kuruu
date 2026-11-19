@@ -120,19 +120,19 @@ assert.ok(fast && fast.kmh >= 100 && !fast.maps, '100 km/h 线路只挑主干中
 assert.equal(F.latestModel(gz(2015, 130), 'L1'), null, '主干没有那么快的车时返回 null，不退回城市特色车型');
 console.log('PASS 当前最新车型（v4.4 只取主干 + 速度向下兼容）');
 
-// ================= 4. 升级目标与待升级列车（城市特色车排除在科技树之外） =================
+// ================= 4. 升级目标与待升级列车（v5.0：城市特色车与旧款主力一起升级） =================
 const g4 = mkG({ trains: [
   { id: 'T1', model: 'gen-a', cars: 8, bought: 2010 * 12, cost: 1000, line: 'L1' },      // 旧车型，满编
-  { id: 'T2', model: 'bj-a', cars: 4, bought: 2018 * 12, cost: 900, line: 'L1' },       // 城市特色车：不进科技树升级，只可扩编
+  { id: 'T2', model: 'bj-a', cars: 4, bought: 2018 * 12, cost: 900, line: 'L1' },       // 城市特色车：可升级到当前主力
   { id: 'T3', model: 'bj-a', cars: 8, bought: 2018 * 12, cost: 1800, line: 'L1' },      // 城市特色车已满编
   { id: 'T4', model: 'gen-a', cars: 6, bought: 2010 * 12, cost: 800, line: 'L2' },      // 别的线路
   { id: 'T5', model: 'gen-a', cars: 4, bought: 2010 * 12, cost: 600, line: 'L1' },      // 旧车型但编组偏小
 ]});
 const tgt = F.techTarget(g4, 'L1');
-assert.equal(tgt.m.id, 'gen-eco', '2020 年北京的主干目标是节能车');
+assert.equal(tgt.m.id, 'gen-eco', '2020 年北京的主力目标是节能车');
 assert.equal(tgt.cars, 8, '编组取线路上限与该车型上限的较小值');
-assert.deepEqual(Array.from(F.staleTech(g4, 'L1'), t => t.id), ['T1', 'T5'], '只挑主干旧车型，城市特色车不参与科技树升级判定');
-assert.deepEqual(Array.from(F.cityStaleCars(g4, 'L1'), t => t.id), ['T2'], '城市特色车只走同车型扩编通道');
+assert.deepEqual(Array.from(F.staleTech(g4, 'L1'), t => t.id), ['T1', 'T2', 'T3', 'T5'], '旧款主力与城市特色车都进入待升级列表');
+assert.equal(F.staleTech(g4, 'L1').filter(F.isCityTrain).length, 2, '两列城市特色车都在升级范围内');
 // 固定编组车型（D 型）目标编组固定 8 节，不按线路上限缩放
 const g160 = mkG({ lines: { L1: { id: 'L1', name: '1 号线', speed: 160 } }, routes: [{ lineId: 'L1', cars: 6 }], y: 2020 });
 assert.equal(F.techTarget(g160, 'L1').cars, 8, 'D 型车固定 8 节，不受站台上限 6 节影响');

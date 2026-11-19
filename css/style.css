@@ -3280,8 +3280,6 @@ body.cinema #immExit { top: max(12px, env(safe-area-inset-top)); right: max(12px
 .st-onoff > .btn { flex: 0 0 auto; }
 .st-onoff.off { border-color: var(--bad); }
 .st-onoff.off b { color: var(--bad); }
-/* v4.4：城市特色车扩编独立于科技树升级条，用中性边框 */
-.fo-auto.up-city { border-color: var(--line-strong); }
 /* 160 速度档的站台不足：按钮可点（要弹错误提示），但视觉上置灰 */
 .seg-ctl.sm button.locked { opacity: .55; }
 .fo-buy b.bad { color: var(--bad); }
@@ -3914,3 +3912,20 @@ body.ops-open #feed > :not(#toasts) { display: none; }
 .to-color .lc-hex-note { margin: 0; max-width: 210px; }
 .qpop-colorfoot { display: flex; align-items: center; gap: 6px; margin-top: 7px; }
 .qpop-hex { width: 96px; }
+
+/* ===== v5.0 车型分级：主力 T1–T6 一款一级，城市特色同尺定级，D 型车独立 ===== */
+/* 车队总览的车型一览与购车卡片共用：名称行里带一枚等级徽标，主力用实线强调色、城市支线用虚线、D 型用虚线中性色 */
+.fo-name { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; }
+.fo-name b { min-width: 0; overflow-wrap: anywhere; }
+.fo-tier { flex: none; font-size: 10px; font-weight: 700; letter-spacing: .2px; line-height: 1.55; padding: 0 5px; border-radius: 5px; border: 1px solid var(--line-strong); color: var(--text); background: var(--surface-2); white-space: nowrap; }
+.fo-tier.trunk { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); background: var(--accent-soft); }
+.fo-tier.city { color: var(--warn); border-style: dashed; border-color: color-mix(in srgb, var(--warn) 45%, transparent); background: var(--warn-soft); }
+.fo-tier.d { color: var(--muted); border-style: dashed; }
+/* 科技树节点：等级标签固定在节点第一行右侧，年份与状态仍在下方，不挤压车型名 */
+.tt-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.tt-tier { flex: none; font-size: 9.5px; font-weight: 700; line-height: 1.5; padding: 0 4px; border-radius: 4px; border: 1px solid var(--line-strong); color: var(--muted); }
+.tt-tier.trunk { color: var(--text); }
+.tt-tier.city { border-style: dashed; }
+.tt-tier.d { border-style: dashed; }
+.tt-node.sale .tt-tier.trunk { color: var(--good); border-color: color-mix(in srgb, var(--good) 45%, transparent); }
+.tt-node.on .tt-tier { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }

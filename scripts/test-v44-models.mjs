@@ -102,8 +102,8 @@ assert.equal(F.ownsModel(g3, 'gen-d160'), true, '160 支线恒可用');
 assert.equal(F.canAutoPick(g3, F.model('gz-a8')), false, '未购置的城市特色车型不能被自动选中');
 assert.equal(F.canAutoPick(g3, F.model('gen-eco')), true);
 F.markOwned(g3, 'gz-a8');
-assert.equal(F.ownsModel(g3, 'gz-a8'), true, '买过之后解锁');
-assert.equal(F.canAutoPick(g3, F.model('gz-a8')), true);
+assert.equal(F.ownsModel(g3, 'gz-a8'), true, '买过之后记为已购置');
+assert.equal(F.canAutoPick(g3, F.model('gz-a8')), false, 'v5.0：已购置的城市特色车型也不参与任何自动流程');
 assert.equal(g3.fleet.owned.length, 1, 'owned 去重');
 F.markOwned(g3, 'gz-a8');
 assert.equal(g3.fleet.owned.length, 1);
@@ -118,59 +118,68 @@ assert.equal(g3c.fleet.owned, undefined, '前提：模拟旧存档没有 owned')
 F.ensure(g3c);
 assert.equal(F.ownsModel(g3c, 'gz-a8'), true, '旧存档按现有列车补记已购置状态');
 assert.ok(Array.isArray(g3c.fleet.owned) && g3c.fleet.owned.indexOf('gz-a8') >= 0);
-console.log('PASS 3 城市特色车型的已购置门禁与旧存档迁移');
+console.log('PASS 3 城市特色车型的已购置记录与旧存档迁移（不再作为自动选用的门禁）');
 
-// ================= 4. 科技树升级判定完全排除城市特色车 =================
+// ================= 4. v5.0：城市特色车与旧款主力一起升级到当前主力 =================
 const g4 = mkG({ mapId: 'gz', y: 2012, trains: [
-  TRAIN('T1', 'gen-a', 8, 'L1'),        // 主干旧车 → 可升级
-  TRAIN('T2', 'gz-a8', 4, 'L1'),       // 城市特色车 → 不可进科技树升级，只可扩编
+  TRAIN('T1', 'gen-a', 8, 'L1'),        // 旧款主力 → 可升级
+  TRAIN('T2', 'gz-a8', 4, 'L1'),       // 城市特色车 → 同样可升级
   TRAIN('T3', 'gz-a8', 8, 'L1'),       // 城市特色车已满编
   TRAIN('T4', 'gen-a', 4, 'L2'),       // 别的线路
 ]});
-assert.equal(F.canTechUpgrade(TRAIN('X', 'gz-a8', 4, 'L1')), false);
+assert.equal(F.canTechUpgrade(TRAIN('X', 'gz-a8', 4, 'L1')), true, '城市特色车可进入科技树升级');
 assert.equal(F.canTechUpgrade(TRAIN('X', 'gen-a', 4, 'L1')), true);
-assert.equal(F.latestModel(g4, 'L1').id, 'gen-eco', '升级目标取主干');
+assert.equal(F.latestModel(g4, 'L1').id, 'gen-eco', '升级目标仍取主力（T5）');
 assert.equal(F.techTarget(g4, 'L1').m.id, 'gen-eco');
-assert.deepEqual(Array.from(F.staleTech(g4, 'L1'), t => t.id), ['T1'], '城市特色车不进待升级列表');
-// 即使外部硬把城市特色车塞进 list，报价与执行也不会给它换车型
+assert.deepEqual(Array.from(F.staleTech(g4, 'L1'), t => t.id), ['T1', 'T2', 'T3'], '旧款主力与城市特色车都在待升级列表');
 const forced = g4.fleet.trains.filter(t => t.line === 'L1');
 const q4 = F.techQuote(g4, forced, 'L1');
-assert.equal(q4.n, 1, 'techQuote 自己再过滤一次，只算主干车');
-assert.equal(q4.reset, 1);
+assert.equal(q4.n, 3, '报价包含城市特色车');
+assert.equal(q4.reset, 3, '三列都换车型');
+assert.equal(q4.target, F.model('gen-eco'));
+const before4 = g4.fleet.trains.map(t => ({ model: t.model, cars: t.cars, bought: t.bought }));
 const r4 = F.upgradeTech(g4, 'L1');
 assert.equal(r4.ok, true);
-assert.equal(g4.fleet.trains[0].model, 'gen-eco');
-assert.equal(g4.fleet.trains[1].model, 'gz-a8', '城市特色车不会被换成主干车型');
-assert.equal(g4.fleet.trains[1].cars, 4, '也不会被科技树流程顺手扩编');
-assert.equal(g4.fleet.trains[1].bought, 2010 * 12, '车龄不变');
-// 无人驾驶 / D 型改装两条换车型通道同样排除
+assert.equal(g4.fleet.trains[0].model, 'gen-eco', '旧款主力升级到 T5');
+assert.equal(g4.fleet.trains[1].model, 'gen-eco', '城市特色车也升级到当前主力');
+assert.equal(g4.fleet.trains[1].cars, 8, '编组同步升到目标编组');
+assert.equal(g4.fleet.trains[1].bought, g4.ym(), '换车型后车龄重置');
+assert.equal(g4.fleet.trains[1].cost, Math.round(F.price(g4, F.model('gen-eco'), 8, 2012)), '车体成本按新车型入账');
+assert.equal(g4.fleet.trains[2].model, 'gen-eco', '满编城市特色车同样换车型');
+assert.equal(g4.fleet.trains[3].model, before4[3].model, '别的线路不受影响');
+assert.equal(F.tierOf(F.model(g4.fleet.trains[1].model)), 5, '升级后等级为 T5');
+assert.equal(F.model(g4.fleet.trains[1].model).cap, 320, '升级后定员取新车型');
+// 无人驾驶 / D 型两条换车型通道同样按「可升级」处理（v5.0 起含城市特色车）
 const g4a = mkG({ mapId: 'gz', y: 2030, trains: [TRAIN('A1', 'gz-a8', 6, 'L1'), TRAIN('A2', 'gen-a', 6, 'L1')] });
-assert.deepEqual(Array.from(F.staleAuto(g4a, 'L1'), t => t.id), ['A2'], '无人驾驶改装不含城市特色车');
+assert.deepEqual(Array.from(F.staleAuto(g4a, 'L1'), t => t.id), ['A1', 'A2'], '无人驾驶改装含城市特色车，目标是 T6');
 const g4d = mkG({ mapId: 'gz', y: 2012, lines: { L1: { id: 'L1', name: '1 号线', speed: 160 } },
   trains: [TRAIN('D1', 'gz-a8', 6, 'L1'), TRAIN('D2', 'gen-a', 6, 'L1')] });
-assert.deepEqual(Array.from(F.staleD(g4d, 'L1'), t => t.id), ['D2'], 'D 型改装不含城市特色车');
-console.log('PASS 4 科技树升级 / 改装判定与流程完全排除城市特色车');
+assert.deepEqual(Array.from(F.staleD(g4d, 'L1'), t => t.id), ['D1', 'D2'], '160 轨道上的城市特色车也改装为 D 型');
+console.log('PASS 4 城市特色车与旧款主力一起补差价升级到当前主力');
 
-// ================= 5. 城市特色车只能同车型补差价扩编 =================
+// ================= 5. 升级后的等级 / 性能 / 配属状态 =================
 const g5 = mkG({ mapId: 'gz', y: 2012, trains: [
   TRAIN('C1', 'gz-a8', 4, 'L1'),
   TRAIN('C2', 'gz-a8', 8, 'L1'),
   TRAIN('C3', 'gen-a', 4, 'L1'),
 ]});
-assert.deepEqual(Array.from(F.cityStaleCars(g5, 'L1'), t => t.id), ['C1'], '只有编组不足的城市特色车可扩编');
-assert.equal(F.staleTech(g5, 'L1').length, 1, '同线的主干车仍走科技树升级，两套流程互不干扰');
-const before = g5.fleet.trains.map(t => ({ model: t.model, bought: t.bought }));
-const r5 = F.upgradeCityCars(g5, 'L1');
+g5.fleet.trains[0].svc = 'ccw';
+const before5 = g5.fleet.trains.map(t => ({ model: t.model, bought: t.bought, line: t.line, svc: t.svc }));
+const q5 = F.techQuote(g5, g5.fleet.trains.filter(t => t.line === 'L1'), 'L1');
+assert.equal(q5.n, 3);
+assert.ok(q5.credit > 0, '城市特色车按残值抵扣');
+const r5 = F.upgradeTech(g5, 'L1');
 assert.equal(r5.ok, true);
-assert.equal(g5.fleet.trains[0].cars, 8, '编组扩到线路上限');
-assert.equal(g5.fleet.trains[0].model, before[0].model, '车型不变');
-assert.equal(g5.fleet.trains[0].bought, before[0].bought, '车龄不变');
-assert.equal(g5.fleet.trains[2].model, 'gen-a', '主干车不受城市特色车扩编影响');
-assert.equal(g5.fleet.trains[2].cars, 4);
-assert.ok(F.upgradeCityCars(g5, 'L1').error, '已扩满后再次调用被拒绝');
-assert.ok(spent.some(s => /城市特色车扩编/.test(s)), '扣费走建设支出');
-assert.ok(logs.some(l => /城市特色车/.test(l.desc) && /补差价/.test(l.desc)));
-console.log('PASS 5 城市特色车补差价升级仅限编组升级');
+assert.equal(g5.fleet.trains[0].model, 'gen-eco');
+assert.equal(g5.fleet.trains[0].cars, 8, '小编组城市特色车升级后达到目标编组');
+assert.equal(g5.fleet.trains[0].bought, g5.ym(), '车龄重置');
+assert.equal(g5.fleet.trains[0].line, before5[0].line, '配属线路不变');
+assert.equal(g5.fleet.trains[0].svc, before5[0].svc, '配属交路不变');
+assert.equal(F.tierOf(F.model(g5.fleet.trains[0].model)), 5, '等级更新为 T5');
+assert.equal(F.model(g5.fleet.trains[0].model).cap, 320, '定员随车型更新');
+assert.ok(spent.some(s => /列车升级/.test(s)), '扣费走建设支出');
+assert.ok(logs.some(l => /残值/.test(l.desc)), '日志写明残值抵扣');
+console.log('PASS 5 升级后等级、性能与配属状态同步更新');
 
 // ================= 6. 自动配置只买主干车型 =================
 const mkAuto = (o = {}) => {
@@ -193,19 +202,22 @@ const withResults = g => {
   g.model.resultsFor = () => ({ per: [0, 1, 2, 3].map(() => ({ freq: [10], load: [0] })) });
   return g;
 };
-// 车队里已有城市特色车 = 已购置，这时可以参与智能分配；未购置时统一门禁会挡住
+// 车辆段里的城市特色车（即使已购置、车队里就有）也不参与智能分配与自动配置
 const gB = withResults(mkAuto({ trains: [{ id: 'X1', model: 'gz-a8', cars: 8, bought: 0, cost: 1, line: null }] }));
-assert.ok(F.allocPlan(gB).moved > 0, '已购置的城市特色车可以参与智能分配');
-const origOwns = F.ownsModel;
-F.ownsModel = function (gg, m) { return origOwns(gg, m) && (typeof m === 'string' ? m : m.id) !== 'gz-a8'; };
-assert.equal(F.allocPlan(gB).moved, 0, '未购置的城市特色车不参与智能分配');
-F.ownsModel = origOwns;
-// 补车报价也只列主干车型；主干没有能跑的车型时不补车
+const pB = F.allocPlan(gB);
+assert.equal(pB.moved, 0, '城市特色车不参与智能分配');
+assert.equal(pB.left, 0, '城市特色车不计入可分配列车');
+assert.ok(pB.unmet > 0, '缺口仍然存在，等待主力车型补足');
+const rb = F.autoConfigRun(gB);
+assert.equal(gB.fleet.trains[0].line, null, '自动配置不会把城市特色车调上线');
+assert.ok(rb.bought > 0, '缺口改由自动购买主力车型补足');
+assert.ok(gB.fleet.trains.filter(t => t.line === 'L1').every(t => !F.isCity(F.model(t.model))), '自动配置买的都是主力车型');
+// 补车报价也只列主力车型；主力没有能跑的车型时不补车
 const gC = mkAuto({ routes: [{ ...autoRoute, kmh: 130 }], lines: { L1: { id: 'L1', name: '1 号线', speed: 130 } } });
 const fillC = F.fillCost(gC, F.allocPlan(gC));
 assert.ok(fillC.rows.every(r => !F.isCity(r.m)), 'fillCost 不买城市特色车型');
-assert.equal(fillC.rows.length, 0, '主干没有能跑 130 km/h 的车型时直接不补车');
-console.log('PASS 6 自动配置只买主干、城市特色车需购置后才参与');
+assert.equal(fillC.rows.length, 0, '主力没有能跑 130 km/h 的车型时直接不补车');
+console.log('PASS 6 自动配置只补主力车型，城市特色车只能手动调派');
 
 // ================= 7. 随线配车（草案）不自动选城市特色车型 =================
 const g7 = mkG({ mapId: 'gz', y: 2012 });
@@ -224,4 +236,4 @@ assert.ok(plan7b && plan7b[0], '主干没有合适车型时也不崩');
 assert.equal(plan7b[0].avail[0], 0, '不会用城市特色车型凑速度');
 console.log('PASS 7 草案随线配车只按主干补足');
 
-console.log('ALL PASS v4.4 车型配置 / 购置门禁 / 升级判定 / 自动配置');
+console.log('ALL PASS v5.0 车型分级 / 自动配置只补主力 / 城市特色车补差价升级');

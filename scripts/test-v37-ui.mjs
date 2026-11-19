@@ -155,10 +155,21 @@ try {
   assert.ok(tree.nodes >= 8, '节点数量够多：' + tree.nodes);
   assert.ok(tree.lit >= 3, '按年份点亮了一部分节点：' + tree.lit);
   assert.equal(tree.cities, 9, '9 个城市支线切换按钮');
-  assert.deepEqual(tree.labels.slice(0, 1), ['主干']);
+  assert.deepEqual(tree.labels.slice(0, 1), ['主力'], '主干行改称主力，对应 T1–T6');
+  // v5.0：主力一行 T1–T6 一款一级，160 行标 D；城市支线也带 T 级
+  const ttTiers = await E('[...document.querySelectorAll(".tt-row")].map(r=>[...r.querySelectorAll(".tt-tier")].map(x=>x.textContent.trim()))');
+  assert.deepEqual(ttTiers[0], ['T1', 'T2', 'T3', 'T4', 'T5', 'T6'], '主力节点的等级依次为 T1–T6：' + ttTiers[0].join('/'));
+  assert.deepEqual(ttTiers[ttTiers.length - 1], ['D'], '160 支线上的 D 型车不参与 T 级');
+  assert.ok(ttTiers[1].every(t => /^T[1-6]$/.test(t)), '城市支线节点也有 T 级：' + ttTiers[1].join('/'));
+  const ttNote = await E('document.querySelector(".tt-wrap .note").textContent');
+  assert.match(ttNote, /T1–T6/, '科技树说明写明 T1–T6 分级');
+  assert.match(ttNote, /D 型车是独立的 160/, '说明写明 D 型车独立');
   const switches = await E('[...document.querySelectorAll(".fo-auto .switch")].map(b=>b.getAttribute("aria-label"))');
   assert.ok(switches.indexOf('自动配置列车') >= 0, '有「自动配置列车」总开关：' + switches.join('/'));
   assert.ok(switches.indexOf('每月自动分配闲置列车') >= 0, '保留月度自动分配开关');
+  const autoTxt = await E('(()=>{const b=[...document.querySelectorAll(".fo-auto")].find(x=>/自动配置列车/.test(x.textContent));return b?b.textContent:""})()');
+  assert.match(autoTxt, /只调主力 T 级车型/, '自动配置说明只补主力车型：' + autoTxt);
+  assert.match(autoTxt, /城市特色车型不会被自动调派或购买/, '自动配置说明写明城市特色车需手动');
   const fleetTbl = await E(`(()=>{const grps=[...document.querySelectorAll(".fleet-grp")],tbs=[...document.querySelectorAll(".fleet-line-tbl")];
     if(!grps.length||!tbs.length)return null;
     const th=[...tbs[0].querySelectorAll("th")].map(x=>x.textContent.trim());
@@ -188,6 +199,8 @@ try {
   assert.deepEqual(enTh, ['Service', 'Model × count', 'Assigned / needed', 'Actions'], '组内表头有英文：' + enTh.join('/'));
   const enBtns = await E('[...document.querySelectorAll(".fleet-line-tbl td:nth-child(4) button")].slice(0,2).map(b=>b.textContent.trim())');
   assert.deepEqual(enBtns, ['Buy', 'Sell'], '买入卖出有英文：' + enBtns.join('/'));
+  const enTier = await E('[CM.I18n.text("T5 主力"),CM.I18n.text("T5 城市"),CM.I18n.text("D 型专用")]');
+  assert.deepEqual(enTier, ['T5 mainline', 'T5 city', 'D-type only'], '等级徽标有英文：' + enTier.join('/'));
   await E('CM.I18n.apply("zh-CN");true');
   await delay(350);
 
@@ -208,13 +221,16 @@ try {
   await until('!!document.querySelector(".up-tech")');
   const upBar = await E('(()=>{const b=document.querySelector(".up-tech");return {t:b.querySelector("b").textContent,d:b.textContent,btn:b.querySelector("button").textContent.trim(),dis:!!b.querySelector("button").disabled}})()');
   assert.match(upBar.t, /升级|扩编/, '升级条标题写明升级或扩编：' + upBar.t);
+  assert.match(upBar.t, /T[1-6]/, '升级条标题带目标主力车型的 T 级：' + upBar.t);
   assert.equal(upBar.btn, '补差价升级');
   assert.equal(upBar.dis, false, '沙盒档不会因资金不足置灰');
   await shot('v37-line-upgrade');
   const beforeStale = await E(`(CM.Fleet.staleTech(CM.game,${JSON.stringify(lid)})||[]).map(x=>x.id)`);
   assert.ok(beforeStale.length > 0, '升级条出现时确实有待升级的列车');
-  // v4.4：城市特色车不进科技树升级，升级前后必须保持原车型与编组
+  // v5.0：城市特色车与旧款主力一起升级到当前主力车型
   const beforeCity = await E(`(()=>{const g=CM.game;return g.fleet.trains.filter(t=>t.line===${JSON.stringify(lid)}&&CM.Fleet.isCityTrain(t)).map(t=>t.model+'|'+t.cars)})()`);
+  assert.ok(beforeCity.length > 0, '前提：本线有城市特色车，升级条要把它们一起算进去');
+  const beforeCount = await E(`CM.game.fleet.trains.filter(t=>t.line===${JSON.stringify(lid)}).length`);
   await E('document.querySelector(".up-tech button").click();true');
   await until('!!document.querySelector(".modal-actions")');
   const okBtn = await E('(()=>{const b=[...document.querySelectorAll(".modal-actions button")].find(x=>/补差价升级/.test(x.textContent));if(b){b.click();return true}return false})()');
@@ -232,7 +248,8 @@ try {
   assert.equal(after.stale.length, 0, '升级后本线没有待升级列车（车型与编组都到顶）：' + after.stale.join(','));
   assert.ok(after.cars.every(c => c >= after.target.cars), '每列主干车编组都不小于目标：' + JSON.stringify(after.cars));
   assert.ok(after.models.every(m => m === after.target.id), '主干车统一到科技树目标车型：' + after.models.join('/'));
-  assert.deepEqual(after.city, beforeCity, '城市特色车未被换车型或扩编');
+  assert.deepEqual(after.city, [], '城市特色车已升级为主力车型，线上不再有城市特色车');
+  assert.equal(after.n, beforeCount, '升级不增删列车，配属状态不变');
   assert.ok(after.toasts.some(t => /已升级/.test(t)), '弹出升级结果提示');
 
   // 颜色代码输入：切到「编辑」分页并展开「线路颜色」，输入 #F3D03E 后线路颜色立即变化
