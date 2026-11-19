@@ -13,16 +13,28 @@
   const DENS = [10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000];
   const RADII = [1, 2, 3, 5, 8, 10];               // 作用半径（km）
   const CELL_KM2 = Math.pow(CFG.CELL_M / 1000, 2);  // 每格面积：0.0625 km²
-  // 自定义设施：类别取设施系统里的非枢纽类型（铁路站 / 机场需要外生的旅客量，不在这里做）
-  const FAC_TYPES = ['shop', 'cbd', 'uni', 'hosp', 'scenic', 'park', 'stadium', 'venue'];
+  // 自定义设施：类别取设施系统里的类型（商圈、大学、医院…）。
+  // v5.1：铁路客运站与汽车客运站也开放建造——枢纽不按「占全市该目的比例」吸引，而是按接驳客流（万人次/日）计，
+  // 两类的接驳逻辑完全一致（见 facility.js 的 TYPES.rail / TYPES.bus 与 sim.js 的 hubTours）。
+  const FAC_TYPES = ['shop', 'cbd', 'uni', 'hosp', 'scenic', 'park', 'stadium', 'venue', 'rail', 'bus'];
+  const HUB_TYPES = ['rail', 'bus'];               // 枢纽类别：走接驳客流，不走出行需求比例
+  const HUB_PAX = 2;                               // 新建枢纽的默认接驳客流（万人次/日）
+  const HUB_PAX_STEPS = [0.5, 1, 2, 5, 10];
   const SHARES = [0.002, 0.005, 0.01, 0.02];       // 占全市该目的出行吸引的比例
   const SIZES = [{ r: 0.6, name: '小' }, { r: 1, name: '中' }, { r: 1.6, name: '大' }];
   const MAX_FAC = 60, MAX_OPS = 60, MAX_MARKS = 400;
   const FILL = 0.04;                               // city.growMonth 每月吸收的超额比例（人口）
   const WALK = function () { return (CFG.walk && CFG.walk.maxAccessM ? CFG.walk.maxAccessM : 1125) / CFG.CELL_M; };
 
-  const Cheat = { DENS: DENS, RADII: RADII, FAC_TYPES: FAC_TYPES, SHARES: SHARES, SIZES: SIZES, CELL_KM2: CELL_KM2, MAX_FAC: MAX_FAC };
+  const Cheat = { DENS: DENS, RADII: RADII, FAC_TYPES: FAC_TYPES, SHARES: SHARES, SIZES: SIZES, CELL_KM2: CELL_KM2, MAX_FAC: MAX_FAC,
+    HUB_TYPES: HUB_TYPES, HUB_PAX: HUB_PAX, HUB_PAX_STEPS: HUB_PAX_STEPS };
   CM.Cheat = Cheat;
+  // 这个类别是否是枢纽（铁路客运站 / 汽车客运站）：枢纽按接驳客流计，其余按出行需求比例计
+  Cheat.isHubType = function (t) {
+    const T = CM.Fac && CM.Fac.TYPES ? CM.Fac.TYPES[t] : null;
+    return !!(T && T.hub);
+  };
+  Cheat.defPax = function (t) { return Cheat.isHubType(t) ? HUB_PAX : 0; };
 
   // 密度与人口：1 人/km² 落在 250 m 的格子上是 0.0625 人
   Cheat.peopleOf = function (dens) { return dens * CELL_KM2; };
@@ -61,12 +73,12 @@
   // 自定义设施的内容签名：cache 键带上它，读档后即使 ver 相同也不会误用上一局的设施表
   Cheat.sig = function () {
     const g = CM.game, s = g && g.cheat && Array.isArray(g.cheat.cfacs) ? g.cheat.cfacs : [];
-    return s.map(function (c) { return c.id + ':' + c.t + ':' + c.x + ':' + c.y + ':' + c.r + ':' + c.open; }).join(',');
+    return s.map(function (c) { return c.id + ':' + c.t + ':' + c.x + ':' + c.y + ':' + c.r + ':' + c.open + ':' + (c.pax == null ? '' : c.pax); }).join(',');
   };
   Cheat.pack = function (s) {
     return {
       marks: s.marks.map(function (m) { return { x: m.x, y: m.y, r: m.r }; }),
-      cfacs: s.cfacs.map(function (c) { return { id: c.id, name: c.name, t: c.t, x: c.x, y: c.y, r: c.r, open: c.open, w: c.w }; }),
+      cfacs: s.cfacs.map(function (c) { return { id: c.id, name: c.name, t: c.t, x: c.x, y: c.y, r: c.r, open: c.open, w: c.w, pax: c.pax }; }),
       res: s.res, totalPop: s.totalPop, totalFac: s.totalFac, used: s.used, seq: s.seq,
     };
   };
@@ -80,8 +92,11 @@
     }
     for (const c of Array.isArray(raw.cfacs) ? raw.cfacs.slice(-MAX_FAC) : []) {
       if (!c || !Number.isFinite(+c.x) || !Number.isFinite(+c.y) || FAC_TYPES.indexOf(c.t) < 0) continue;
+      // 旧存档（v5.1 之前）没有 pax：枢纽类别按默认接驳客流补上，非枢纽保持 0
+      const hp = Cheat.isHubType(c.t);
       s.cfacs.push({ id: String(c.id || ('cf' + (s.cfacs.length + 1))), name: String(c.name || '自定义设施').slice(0, 20), t: c.t,
-        x: +c.x, y: +c.y, r: U.clamp(num(c.r) || 1, 0.4, 3), open: num(c.open), w: U.clamp(num(c.w) || 0.005, 0.0001, 0.2) });
+        x: +c.x, y: +c.y, r: U.clamp(num(c.r) || 1, 0.4, 3), open: num(c.open), w: U.clamp(num(c.w) || 0.005, 0.0001, 0.2),
+        pax: hp ? U.clamp(num(c.pax) || HUB_PAX, 0.1, 50) : 0 });
     }
     s.totalPop = num(raw.totalPop); s.totalFac = s.cfacs.length; s.used = !!raw.used;
     s.seq = Math.max(Math.round(num(raw.seq)), s.cfacs.length);
@@ -154,9 +169,14 @@
     const out = [];
     for (const c of s) {
       const T = Fac.TYPES[c.t]; if (!T) continue;
+      const hub = !!T.hub;
       out.push({
         k: 0, id: c.id, name: c.name, label: c.name, t: c.t, T: T, x: c.x, y: c.y, r: c.r, lmK: -1,
-        open: c.open, close: null, w: [[0, c.w]], pax: null, p: T.p, we: null, note: '', src: null, ext: null, rw: null, gen: null, cus: true,
+        open: c.open, close: null,
+        // 枢纽走接驳客流（万人次/日），其余走出行吸引比例：与 Fac.pax / Fac.share 的口径一一对应
+        w: hub ? null : [[0, c.w]],
+        pax: hub ? [[0, c.pax != null ? c.pax : HUB_PAX]] : null,
+        p: T.p, we: null, note: '', src: null, ext: null, rw: null, gen: null, cus: true,
       });
     }
     return out;
@@ -176,6 +196,8 @@
       id: 'cf' + s.seq, name: String(at.name || (T.name + ' ' + s.seq)).slice(0, 20), t: t,
       x: at.x, y: at.y, r: at.r != null ? at.r : T.r, open: at.open != null ? at.open : Math.floor(g.year()),
       w: at.w != null ? at.w : 0.005,
+      // 枢纽（铁路客运站 / 汽车客运站）按接驳客流计；两类默认值与上下限完全相同
+      pax: T.hub ? (at.pax != null ? U.clamp(+at.pax, 0.1, 50) : HUB_PAX) : 0,
     };
     s.cfacs.push(rec); s.totalFac = s.cfacs.length; s.used = true; s.ver++;
     s.lastAt = { x: at.x, y: at.y }; s.lastBox = { x0: at.x - rec.r, y0: at.y - rec.r, x1: at.x + rec.r, y1: at.y + rec.r };
@@ -188,7 +210,15 @@
     if (!rec) return false;
     let model = false;
     if (patch.name != null) { const n = String(patch.name).trim().slice(0, 20); if (n && n !== rec.name) { rec.name = n; Cheat.of(g).ver++; } }
-    if (patch.t != null && FAC_TYPES.indexOf(patch.t) >= 0 && patch.t !== rec.t) { rec.t = patch.t; model = true; }
+    if (patch.t != null && FAC_TYPES.indexOf(patch.t) >= 0 && patch.t !== rec.t) {
+      const toHub = Cheat.isHubType(patch.t);
+      rec.t = patch.t;
+      // 切成枢纽补上默认接驳客流，切回普通设施则归零：两类枢纽之外不再残留接驳客流
+      if (toHub && !(rec.pax > 0)) rec.pax = HUB_PAX;
+      if (!toHub) rec.pax = 0;
+      model = true;
+    }
+    if (patch.pax != null && Cheat.isHubType(rec.t) && +patch.pax > 0 && +patch.pax !== rec.pax) { rec.pax = U.clamp(+patch.pax, 0.1, 50); model = true; }
     if (patch.r != null && +patch.r > 0 && +patch.r !== rec.r) { rec.r = U.clamp(+patch.r, 0.4, 3); model = true; }
     if (patch.w != null && +patch.w > 0 && +patch.w !== rec.w) { rec.w = U.clamp(+patch.w, 0.0001, 0.2); model = true; }
     if (patch.open != null && +patch.open !== rec.open) { rec.open = Math.round(+patch.open); model = true; }
@@ -367,10 +397,12 @@
       return;
     }
     const TY = CM.Fac && CM.Fac.TYPES[T.facKind] ? CM.Fac.TYPES[T.facKind] : null;
+    const hub = !!(TY && TY.hub);
     T.ui.setTooltip({
       title: '设施建造',
       lines: ['单击放置一座' + (TY ? TY.name : '设施') + '，立即打开属性面板',
-        '可改名称、类别、出行需求、规模与启用年份；建成后计入设施图层与周边车站客流'],
+        hub ? '枢纽按接驳客流计（万人次/日），与地图上的铁路客运站同一套接驳逻辑；可改名称、类别、接驳客流、规模与启用年份'
+          : '可改名称、类别、出行需求、规模与启用年份；建成后计入设施图层与周边车站客流'],
     }, sx, sy);
   };
   // 悬停指示（v3.0）：人口刷子画出作用半径圆圈（虚线，随所选 km 变化），设施建造画放置点
@@ -408,7 +440,7 @@
     } else {
       const r = Cheat.addFac(g, { x: d.x2, y: d.y2, t: T.facKind });
       if (!r.ok) { T.ui.toast(r.msg, 'bad'); return; }
-      T.ui.toast('已添加设施「' + r.f.name + '」：可在这里改名称、类别、需求与年份', 'good');
+      T.ui.toast('已添加设施「' + r.f.name + '」：可在这里改名称、类别、' + (Cheat.isHubType(r.f.t) ? '接驳客流' : '需求') + '与年份', 'good');
       T.ui.openPage('cfac', r.f.id);
     }
     Cheat.schedule(g);
@@ -423,7 +455,9 @@
     if (!rec || !g) return null;
     const f = Fac.byId(id), yr = g.year(), el = h('div');
     const active = !!f && Fac.active(f, yr, g.city);
-    // 分段选择：类别有八项（英文名很长），允许换行，不让文字竖排或挤出面板
+    // 枢纽类别（铁路客运站 / 汽车客运站）：按接驳客流计，其余按出行需求比例计
+    const hubKind = Cheat.isHubType(rec.t);
+    // 分段选择：类别有十项（英文名很长），允许换行，不让文字竖排或挤出面板
     const seg = function (cur, list, set, wrap) {
       const box = h('div', { class: 'seg-ctl sm', style: wrap ? { flexWrap: 'wrap', maxWidth: '100%', rowGap: '3px' } : null });
       for (const o of list) box.appendChild(h('button', {
@@ -442,7 +476,9 @@
       h('span', { class: 'tag info' }, '自定义设施'),
       h('span', { class: 'tag ' + (active ? 'good' : 'warn') }, active ? '运营中' : (yr < rec.open ? Math.round(rec.open) + ' 年启用' : '暂未运营'))));
     el.appendChild(h('div', { class: 'note', style: { margin: '0 0 6px' } },
-      '自定义设施不写入人口与岗位，而是作为独立的出行目的地加入设施表：它的出行需求直接改变各车站的客流。'));
+      hubKind
+        ? '自定义设施不写入人口与岗位，而是作为独立的出行目的地加入设施表：枢纽按接驳客流计入 OD，与地图上的铁路客运站同一套接驳逻辑。'
+        : '自定义设施不写入人口与岗位，而是作为独立的出行目的地加入设施表：它的出行需求直接改变各车站的客流。'));
     // 名称
     const nameIn = h('input', { type: 'text', value: rec.name, maxlength: '20', 'aria-label': '设施名称', placeholder: '设施名称', style: { flex: '1 1 140px', minWidth: '120px' } });
     nameIn.addEventListener('change', function () {
@@ -454,22 +490,36 @@
     // 类别
     const kinds = FAC_TYPES.map(function (k) {
       const T = Fac.TYPES[k], ps = Object.keys(T.p).map(function (q) { return CFG.trips.name[q]; }).join('、');
-      return [k, h('span', null, ic(T.icon, 13), ' ', T.name), T.name + '：以' + ps + '出行为主'];
+      return [k, h('span', null, ic(T.icon, 13), ' ', T.name),
+        T.hub ? T.name + '：交通枢纽，按接驳客流计，与' + (k === 'bus' ? '铁路客运站' : '汽车客运站') + '完全同一套接驳逻辑'
+          : T.name + '：以' + ps + '出行为主'];
     });
     el.appendChild(row('类别', seg(rec.t, kinds, function (v) { Cheat.setFac(g, id, { t: v }); ui.toast('类别改为' + Fac.TYPES[v].name, 'info'); }, true)));
     // 规模（场地半径）
     const sizes = SIZES.map(function (z) { return [z.r, z.name, '场地半径 ' + z.r + ' 格（约 ' + Math.round(z.r * CFG.CELL_M) + ' m）：决定占地与场内步行']; });
     el.appendChild(row('规模', seg(rec.r, sizes, function (v) { Cheat.setFac(g, id, { r: v }); })));
-    // 出行需求（占全市该目的出行吸引的比例）
-    const shares = SHARES.map(function (v) { return [v, U.fmtPct(v, 1), '占全市该目的出行吸引的 ' + U.fmtPct(v, 1) + '：越大，来这里的出行越多，周边车站客流越高']; });
-    const wIn = h('input', { type: 'text', inputmode: 'decimal', value: String(+(rec.w * 100).toFixed(2)), 'aria-label': '出行需求百分比', style: { width: '62px' } });
-    wIn.addEventListener('change', function () {
-      const v = parseFloat(String(wIn.value).replace(/[^\d.\-]/g, ''));
-      if (!(v > 0) || v > 20) { ui.toast('出行需求填 0–20 之间（单位 %）', 'bad'); wIn.value = String(+(rec.w * 100).toFixed(2)); return; }
-      Cheat.setFac(g, id, { w: v / 100 }); ui.rerenderPage();
-    });
-    el.appendChild(row('出行需求', h('div', { class: 'row', style: { gap: '6px', flexWrap: 'wrap' } },
-      seg(rec.w, shares, function (v) { Cheat.setFac(g, id, { w: v }); }), h('span', { class: 'tiny muted' }, '或'), wIn, h('span', { class: 'tiny muted' }, '% '))));
+    // 需求：枢纽按接驳客流（万人次/日），其余按占全市该目的出行吸引的比例
+    if (hubKind) {
+      const steps = HUB_PAX_STEPS.map(function (v) { return [v, U.fmtNum(v, v < 1 ? 1 : 0), '接驳客流：旅客往返本站的市内出行（万人次/日），铁路与汽车客运站同一口径']; });
+      const pIn = h('input', { type: 'text', inputmode: 'decimal', value: String(+(rec.pax || HUB_PAX).toFixed(2)), 'aria-label': '接驳客流', style: { width: '62px' } });
+      pIn.addEventListener('change', function () {
+        const v = parseFloat(String(pIn.value).replace(/[^\d.\-]/g, ''));
+        if (!(v >= 0.1) || v > 50) { ui.toast('接驳客流填 0.1–50 之间（单位 万人次/日）', 'bad'); pIn.value = String(+(rec.pax || HUB_PAX).toFixed(2)); return; }
+        Cheat.setFac(g, id, { pax: v }); ui.rerenderPage();
+      });
+      el.appendChild(row('接驳客流', h('div', { class: 'row', style: { gap: '6px', flexWrap: 'wrap' } },
+        seg(rec.pax || HUB_PAX, steps, function (v) { Cheat.setFac(g, id, { pax: v }); }), h('span', { class: 'tiny muted' }, '或'), pIn, h('span', { class: 'tiny muted' }, '万人次/日'))));
+    } else {
+      const shares = SHARES.map(function (v) { return [v, U.fmtPct(v, 1), '占全市该目的出行吸引的 ' + U.fmtPct(v, 1) + '：越大，来这里的出行越多，周边车站客流越高']; });
+      const wIn = h('input', { type: 'text', inputmode: 'decimal', value: String(+(rec.w * 100).toFixed(2)), 'aria-label': '出行需求百分比', style: { width: '62px' } });
+      wIn.addEventListener('change', function () {
+        const v = parseFloat(String(wIn.value).replace(/[^\d.\-]/g, ''));
+        if (!(v > 0) || v > 20) { ui.toast('出行需求填 0–20 之间（单位 %）', 'bad'); wIn.value = String(+(rec.w * 100).toFixed(2)); return; }
+        Cheat.setFac(g, id, { w: v / 100 }); ui.rerenderPage();
+      });
+      el.appendChild(row('出行需求', h('div', { class: 'row', style: { gap: '6px', flexWrap: 'wrap' } },
+        seg(rec.w, shares, function (v) { Cheat.setFac(g, id, { w: v }); }), h('span', { class: 'tiny muted' }, '或'), wIn, h('span', { class: 'tiny muted' }, '% '))));
+    }
     // 启用年份
     const yIn = h('input', { type: 'text', inputmode: 'numeric', value: String(Math.round(rec.open)), 'aria-label': '启用年份', style: { width: '68px' } });
     yIn.addEventListener('change', function () {
@@ -486,12 +536,14 @@
       if (a) {
         const vol = a.inn + a.out, mt = a.innM + a.outM;
         el.appendChild(h('div', { class: 'stat-grid' },
-          ui.stat('周平均到访', U.fmtPeople(vol) + ' 人次', '模拟结果', 'muted'),
+          ui.stat(hubKind ? '周平均接驳' : '周平均到访', U.fmtPeople(vol) + ' 人次', '模拟结果', 'muted'),
           ui.stat('乘地铁比例', U.fmtPct(vol > 0 ? mt / vol : 0, 0), '周平均', 'muted')));
       } else el.appendChild(h('div', { class: 'note' }, '客流正在计算，稍后显示。'));
     } else el.appendChild(h('div', { class: 'callout info' }, '这座设施要到 ' + Math.round(rec.open) + ' 年才启用，目前不参与出行计算。'));
     el.appendChild(h('div', { class: 'note', style: { marginTop: '8px' } },
-      '出行需求用「占全市该目的出行吸引的比例」，与其他重要设施的参考规模同一口径；改动后立即重算 OD 与车站客流。'));
+      hubKind
+        ? '枢纽用「接驳客流（万人次/日）」计：旅客往返本站的市内出行，与地图上的铁路客运站同一口径、同一套接驳逻辑；改动后立即重算 OD 与车站客流。'
+        : '出行需求用「占全市该目的出行吸引的比例」，与其他重要设施的参考规模同一口径；改动后立即重算 OD 与车站客流。'));
     el.appendChild(h('div', { class: 'row', style: { marginTop: '10px', flexWrap: 'wrap' } },
       h('button', { class: 'btn sm primary', onclick: function () { Cheat.refresh(g); ui.toast('已按新的属性重算客流', 'good'); ui.rerenderPage(); } }, ic('refresh', 14), '立即重算'),
       h('button', { class: 'btn sm ghost', onclick: function () { if (ui.locateFacility && f) ui.locateFacility(f); } }, ic('pin', 14), '定位'),

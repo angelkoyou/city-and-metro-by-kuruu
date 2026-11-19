@@ -9,6 +9,9 @@
   // p：吸引的出行目的及比例；we：周末相对该目的平均水平的吸引倍数；L：距离衰减长度相对 distDecayHO 的倍数；r：默认场地半径（格）
   const TYPES = {
     rail: { name: '铁路客运站', icon: 'train', p: { hb: 1 }, hub: true, we: 1, L: 0, r: 0.6, group: '交通枢纽' },
+    // 汽车客运站（v5.1）：与铁路客运站同一套枢纽口径——同样的出行目的（枢纽接驳）、距离衰减、场地半径与接驳逻辑，
+    // 只有名称与图标不同。sim.js 里所有枢纽都走「接驳客流 ÷ 2 按人口岗位分配」这一条路径，不区分铁路 / 公路。
+    bus: { name: '汽车客运站', icon: 'bus', p: { hb: 1 }, hub: true, we: 1, L: 0, r: 0.6, group: '交通枢纽' },
     air: { name: '机场', icon: 'plane', p: { hb: 1 }, hub: true, we: 1, L: 0, r: 1.2, group: '交通枢纽' },
     uni: { name: '大学', icon: 'school', p: { sc: 1 }, we: 3, L: 1.8, r: 1.0, group: '教育' },
     hosp: { name: '医院', icon: 'hospital', p: { md: 1 }, we: 1, L: 1.8, r: 0.5, group: '医疗' },

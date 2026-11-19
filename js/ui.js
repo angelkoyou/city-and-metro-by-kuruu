@@ -1437,7 +1437,14 @@
       } else {
         el.append(hint('building', '短按放置一座设施（< 300 ms 且不移动）· 长按或拖动平移地图 · 放下后立即打开属性面板'),
           h('span', { class: 'to-sep' }),
-          grp('类别', segc(T.facKind, cb.FAC_TYPES.map(function (k) { const FT = CM.Fac && CM.Fac.TYPES[k]; return [k, FT ? FT.name : k, FT ? FT.name + '：以' + Object.keys(FT.p).map(function (q) { return CFG.trips.name[q]; }).join('、') + '出行为主（放置后仍可改）' : k]; }), function (v) { T.facKind = v; })));
+          grp('类别', segc(T.facKind, cb.FAC_TYPES.map(function (k) {
+            const FT = CM.Fac && CM.Fac.TYPES[k];
+            if (!FT) return [k, k, k];
+            const tip = FT.hub
+              ? FT.name + '：交通枢纽，按接驳客流计，与' + (k === 'bus' ? '铁路客运站' : '汽车客运站') + '完全同一套接驳逻辑（放置后仍可改）'
+              : FT.name + '：以' + Object.keys(FT.p).map(function (q) { return CFG.trips.name[q]; }).join('、') + '出行为主（放置后仍可改）';
+            return [k, FT.name, tip];
+          }), function (v) { T.facKind = v; })));
       }
       el.append(h('span', { class: 'to-sep' }));
       el.appendChild(h('span', { class: 'to-hint', 'data-tip': '本局作弊注入的累计量' }, ic('sparkle', 14), h('span', null,
