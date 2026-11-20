@@ -308,7 +308,6 @@
     if (!items.time && !items.xfer && !items.fare) return { ok: false, error: '两站之间没有运营中的线路连接' };
     return { ok: true, items: items, from: fromId, to: toId, C: C, G: G };
   };
-  NAV._build = build; // TEMP DEBUG
 
   // ---------------- 图中高亮 ----------------
   const CLS = ['nav-hl', 'nav-st', 'nav-x'];
