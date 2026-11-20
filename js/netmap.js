@@ -5,6 +5,8 @@
   const AX = CM.Accessibility;
   const U = CM.U, M = CM.Metro, h = U.h;
   let ui = null, root = null, view = null, focus = null, useDraft = false, openedGameId = null;
+  // v5.3 地铁导航：面板开关、面板控制器与当前方案（重绘后据此恢复高亮）
+  let navOpen = false, navCtl = null, navPlan = null;
   function game() { return CM.game; }
 
   // 手动换乘：站外换乘按步行距离计时（虚线），长距离换乘零换乘时间（白芯实线）；两者都把站台并成同一座换乘站
@@ -887,8 +889,17 @@
       if (!d || d.moved) return;
       const t = document.elementFromPoint(e.clientX, e.clientY);
       const el = t && t.closest ? t.closest('[data-st]') : null;
-      if (el) locate(el.getAttribute('data-st'));
+      // 导航打开时，点车站是选起点 / 终点，不再跳回地图
+      if (el) { if (navOpen && navCtl) navCtl.pickStation(el.getAttribute('data-st')); else locate(el.getAttribute('data-st')); }
     });
+  }
+  // 导航开关：只重绘一次并保留当前视野；关闭时顺手清掉高亮
+  function setNav(on) {
+    if (navOpen === on) return;
+    navOpen = on;
+    if (!on) { navCtl = null; navPlan = null; if (CM.Nav) CM.Nav.clear(root); }
+    else { focus = null; applyFocus(); }
+    render(true);
   }
   function locate(sid) {
     const g = game(); if (!g) return;
@@ -949,6 +960,9 @@
     clone.classList.remove('focusing');
     clone.querySelectorAll(SCALED).forEach(function (el) { el.removeAttribute('transform'); el.style.display = ''; });
     clone.querySelectorAll('.on').forEach(function (el) { el.classList.remove('on'); });
+    // 导出的是一张完整的线网图：导航的压暗与高亮不带走
+    clone.classList.remove('nav-on');
+    clone.querySelectorAll('.nav-hl, .nav-st, .nav-x').forEach(function (el) { el.classList.remove('nav-hl', 'nav-st', 'nav-x'); });
     const layer = clone.querySelector('.nm-lines');
     if (layer) Array.from(layer.children).sort(function (a, b) { return Number(a.dataset.order) - Number(b.dataset.order); }).forEach(function (node) { layer.appendChild(node); });
     const st = document.createElementNS('http://www.w3.org/2000/svg', 'style'); st.textContent = exportBase(font);
@@ -1032,17 +1046,36 @@
         h('button', { class: 'hbtn', 'data-tip': '缩小', onclick: function () { zoomAt(1 / 0.7); } }, CM.icon('minus')),
         h('button', { class: 'hbtn', 'data-tip': '显示全部', onclick: fitView }, CM.icon('expand')),
         h('button', { class: 'hbtn' + (geographic && showTerrain ? ' on' : ''), disabled: !geographic, 'aria-label': '查看地形', 'data-tip': geographic ? (showTerrain ? '隐藏地形（江河、湖海与山林）' : '显示地形（江河、湖海与山林）') : '简洁示意不显示地形', 'data-silent': '1', onclick: function () { if (!geographic) return; showTerrain = !showTerrain; CM.Sound && CM.Sound.play('toggle'); render(true); } }, CM.icon('mountain'))),
-      h('button', { class: 'btn sm nm-export', 'aria-label': '导出 PNG', 'data-tip': '导出完整线路示意图（含标题与线路图例）', disabled: exporting, onclick: exportPNG }, CM.icon('export'), exporting ? '正在导出…' : '导出 PNG'),
+      h('div', { class: 'nm-headbtns' },
+        h('button', {
+          class: 'btn sm nm-navbtn' + (navOpen ? ' on' : ''), 'aria-label': '地铁导航', 'data-silent': '1',
+          'data-tip': navOpen ? '收起地铁导航' : '地铁导航：选起点与终点，比较时间 / 换乘 / 票价',
+          onclick: function () { setNav(!navOpen); }
+        }, CM.icon('route'), navOpen ? '收起导航' : '导航'),
+        h('button', { class: 'btn sm nm-export', 'aria-label': '导出 PNG', 'data-tip': '导出完整线路示意图（含标题与线路图例）', disabled: exporting, onclick: exportPNG }, CM.icon('export'), exporting ? '正在导出…' : '导出 PNG')),
       h('button', { class: 'hbtn nm-close', 'data-tip': '关闭', 'data-key': 'Esc', onclick: function () { NetMap.close(); } }, CM.icon('close')));
     tgt = null;
     const canvas = build(g);
     if (!canvas.classList.contains('nm-canvas')) head.querySelectorAll('.nm-tools button, .btn').forEach(function (b) { b.disabled = true; });
     const bar = h('div', { class: 'nm-bar' }, chips.childNodes.length ? chips : null, legend(), h('span', { class: 'tiny muted' }, geographic ? '站线与地形等比例 · 可拖动浏览，或显示全图' : '站点位置等比例 · 线路走向示意 · 无地形'));
-    const body = h('div', { class: 'nm-body' }, bar, canvas);
+    const main = h('div', { class: 'nm-main' }, bar, canvas);
+    navCtl = null; navPlan = null;
+    const body = h('div', { class: 'nm-body' }, main);
+    // 导航面板只作用于正式运营网络：草案里还没有车，算不出候车与开行方案
+    if (navOpen && CM.Nav && canvas.classList.contains('nm-canvas')) {
+      navCtl = CM.Nav.panel(g, {
+        seed: ui && ui.selection && ui.selection.kind === 'station' ? ui.selection.id : null,
+        onPlan: function (plan) { navPlan = plan; CM.Nav.highlight(root, plan); },
+        onClose: function () { setNav(false); }
+      });
+      body.appendChild(navCtl.el);
+    }
     // 只有打开时播放入场动画；打开后切换正式 / 含草案或网络变化时就地重绘，不闪动
     const win = h('div', { class: 'stats-win nm-win' + (fresh ? '' : ' static'), onclick: function (e) { e.stopPropagation(); } }, head, body);
     fresh = false;
     root.appendChild(win);
+    // 面板在挂到 root 之前就已经算好方案，这里补一次高亮（此时 SVG 才在文档里）
+    if (navOpen && navPlan && CM.Nav) CM.Nav.highlight(root, navPlan);
     if (savedView && view && savedView.W === view.W && savedView.H === view.H) { Object.assign(view, savedView); setView(); }
     else if (canvas.classList.contains('nm-canvas')) readableView(canvas);
     root.onclick = function () { NetMap.close(); };
@@ -1056,7 +1089,7 @@
     open: function (u) {
       ui = u;
       const g = game();
-      if (g && g.id !== openedGameId) { openedGameId = g.id; focus = null; useDraft = false; }
+      if (g && g.id !== openedGameId) { openedGameId = g.id; focus = null; useDraft = false; navOpen = false; navCtl = null; navPlan = null; if (CM.Nav) CM.Nav.reset(); }
       if (!root) { root = h('div', { id: 'netmap', class: 'hidden' }); document.getElementById('app').appendChild(root); }
       root.classList.remove('hidden');
       fresh = true;

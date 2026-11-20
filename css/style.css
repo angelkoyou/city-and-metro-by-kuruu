@@ -727,7 +727,9 @@ html[data-language="en"] #toolopts .seg-ctl.sm button { text-transform: capitali
 #netmap.hidden { display: none; }
 :root[data-theme="dark"] #netmap { --nm-xfer: #e5ecf6; }
 #app:has(#netmap:not(.hidden)) .pausechip { opacity: 0; pointer-events: none; }
-.nm-body { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.nm-body { flex: 1; display: flex; min-height: 0; }
+/* v5.3 导航打开时，画布与导航面板并排；面板收起时 .nm-main 独占整行 */
+.nm-main { flex: 1; min-width: 0; display: flex; flex-direction: column; min-height: 0; }
 .nm-chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 10px 16px 0; }
 .nm-chip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line-strong); background: var(--surface-solid); border-radius: 999px; padding: 4px 11px; cursor: pointer; font-weight: 600; }
 .nm-chip.on { border-color: var(--accent); box-shadow: var(--ring); }
@@ -750,6 +752,59 @@ html[data-language="en"] #toolopts .seg-ctl.sm button { text-transform: capitali
 .nm-lg-st, .nm-lg-x { width: 10px; height: 10px; border-radius: 50%; border: 2.5px solid var(--accent); background: var(--surface-solid); display: inline-block; }
 .nm-lg-x { width: 13px; height: 13px; border-color: var(--nm-xfer); margin-left: 6px; }
 @media (max-width: 760px), (max-width: 1024px) and (max-height: 520px) and (pointer: coarse) { .nm-legend { display: none; } }
+
+/* ---------- v5.3 地铁导航 ---------- */
+.nm-headbtns { display: flex; align-items: center; gap: 6px; flex: none; }
+.nm-win .nm-navbtn.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); box-shadow: var(--ring); }
+.nm-nav { flex: none; width: 382px; min-height: 0; display: flex; flex-direction: column; gap: 8px; margin: 10px 16px 16px 0; padding: 12px; border-radius: 16px; border: 1px solid var(--line); background: var(--surface-solid); }
+.nm-nav-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.nm-nav-title { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; }
+.nm-nav-title .ico { width: 16px; height: 16px; color: var(--accent); }
+.nm-nav-close { width: 26px; height: 26px; }
+.nm-nav-od { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); gap: 6px; align-items: end; }
+.nm-nav-f { display: flex; flex-direction: column; gap: 3px; font-size: 11px; color: var(--muted); min-width: 0; }
+.nm-nav-sel { width: 100%; min-width: 0; border: 1px solid var(--line-strong); border-radius: 9px; background: var(--surface-solid); color: var(--text); padding: 6px 7px; font: inherit; font-size: 12.5px; }
+.nm-nav-sel:focus { outline: none; border-color: var(--accent); box-shadow: var(--ring); }
+.nm-nav-swap { width: 28px; height: 30px; font-size: 14px; }
+.nm-nav-tabs { width: 100%; }
+.nm-nav-tabs button { flex: 1 1 0; min-width: 0; justify-content: center; font-size: 11.5px; padding: 6px 3px; }
+.nm-nav-out { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px; }
+.nm-nav-hint { font-size: 12px; color: var(--muted); line-height: 1.6; }
+.nm-nav-hint.warn { color: var(--warn); }
+.nm-nav-sum { border: 1px solid var(--line); border-radius: 12px; padding: 9px 11px; background: var(--surface-2); display: flex; flex-direction: column; gap: 5px; }
+.nm-nav-big { display: flex; align-items: baseline; gap: 4px; }
+.nm-nav-big b { font-size: 26px; line-height: 1; }
+.nm-nav-big span { font-size: 12px; color: var(--muted); }
+.nm-nav-kv { display: flex; flex-wrap: wrap; gap: 4px 10px; font-size: 12px; color: var(--muted); }
+.nm-nav-kv b { color: var(--text); }
+.nm-nav-lines { display: flex; flex-wrap: wrap; gap: 4px; }
+.nm-nav-badge { display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 19px; padding: 0 6px; border-radius: 6px; font-size: 11.5px; font-weight: 800; line-height: 1; }
+.nm-nav-break { line-height: 1.5; }
+.nm-nav-same { color: var(--accent); }
+.nm-nav-route { display: flex; flex-direction: column; gap: 7px; }
+.nm-nav-leg { border: 1px solid var(--line); border-radius: 12px; padding: 8px 10px; background: var(--surface-solid); }
+.nm-nav-legh { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12.5px; }
+.nm-nav-stops { font-size: 11.5px; color: var(--muted); line-height: 1.6; margin-top: 4px; word-break: break-word; }
+.nm-nav-xstop { color: var(--text); }
+.nm-nav-legm { margin-top: 3px; }
+.nm-nav-xf { display: flex; align-items: center; gap: 5px; flex-wrap: wrap; font-size: 12px; color: var(--muted); padding: 2px; }
+.nm-nav-xf b { color: var(--text); }
+.nm-nav-xf.sub { padding-left: 14px; }
+.nm-nav-xfdot { width: 7px; height: 7px; border-radius: 50%; border: 2px solid var(--accent); flex: none; }
+.nm-nav-end { font-size: 12px; color: var(--muted); padding: 2px; }
+.nm-nav-end b { color: var(--text); }
+.nm-nav-note { line-height: 1.55; }
+/* 高亮：其余线路、车站与站名压暗，方案经过的区间与车站保持原色 */
+.nm-svg.nav-on .nm-lines > g { opacity: .16; }
+.nm-svg.nav-on .nm-lines > g.nav-hl { opacity: 1; filter: drop-shadow(0 0 4px rgba(43, 100, 156, .5)); }
+.nm-svg.nav-on .nm-dots > * { opacity: .2; }
+.nm-svg.nav-on .nm-dots > .nav-st { opacity: 1; }
+.nm-svg.nav-on .nm-dots > .nav-x { filter: drop-shadow(0 0 5px var(--accent)); }
+.nm-svg.nav-on .nm-labels text { opacity: .18; }
+.nm-svg.nav-on .nm-labels text.nav-st { opacity: 1; }
+.nm-svg.nav-on .nm-badges g, .nm-svg.nav-on .nm-line-ids { opacity: .18; }
+.nm-svg.nav-on .nm-badges g.nav-hl { opacity: 1; }
+.nm-svg.nav-on .nm-walk, .nm-svg.nav-on .nm-same { opacity: .35; }
 
 /* ---------- 平滑切换（主题、界面大小） ---------- */
 /* 主题切换（v2.1）：地图快照与界面颜色在同一帧开始，同样的时长与缓动 */
@@ -1336,13 +1391,14 @@ button:focus-visible, [role="option"]:focus-visible, [role="tab"]:focus-visible,
   .nm-win .stats-head .btn.sm { display: inline-flex; width: 36px; height: 34px; padding: 0; gap: 0; font-size: 0; flex: none; }
   .nm-win .stats-head { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; }
   .nm-win .stats-head > .badge, .nm-win .stats-head > .grow { display: none; }
-  .nm-win .stats-head > .nm-heading { grid-column: 1 / 3; grid-row: 1; min-width: 0; }
+  .nm-win .stats-head > .nm-heading { grid-column: 1; grid-row: 1; min-width: 0; }
+  .nm-win .stats-head > .nm-headbtns { grid-column: 2; grid-row: 1; gap: 4px; }
   .nm-win .stats-head > .nm-close { grid-column: 3; grid-row: 1; }
   .nm-win .stats-head > .nm-mode { grid-column: 1; grid-row: 2; justify-self: start; }
-  .nm-win .stats-head > .nm-mode button { padding: 4px 6px; font-size: 11.5px; }
-  .nm-win .stats-head > .nm-tools { grid-column: 2; grid-row: 2; }
+  .nm-win .stats-head > .nm-mode button { padding: 4px 6px; font-size: 11.5px; white-space: nowrap; }
+  .nm-win .stats-head > .nm-tools { grid-column: 2 / 4; grid-row: 2; justify-self: end; }
   .nm-win .stats-head .nm-tools .hbtn { width: 28px; }
-  .nm-win .stats-head > .btn.sm { grid-column: 3; grid-row: 2; }
+  .nm-win .stats-head > .btn.sm { grid-column: 2; grid-row: 1; }
   .nm-win .stats-head > .seg-ctl:not(.nm-mode) { grid-column: 1 / -1; }
 }
 /* 横屏或浏览器工具栏压缩可视高度时，入口和选图仍能滚动到所有操作。 */
@@ -1372,6 +1428,10 @@ button:focus-visible, [role="option"]:focus-visible, [role="tab"]:focus-visible,
   .nm-bar .nm-chips { flex-wrap: nowrap; max-height: none; overflow-x: auto; }
   .nm-chips .nm-chip { flex: none; }
   .nm-canvas { margin: 8px; }
+  /* 窄屏：导航面板放到画布下方，避免把线网压成一条细缝 */
+  .nm-body { flex-direction: column; }
+  .nm-nav { width: auto; max-height: 52%; margin: 0 8px 8px; padding: 10px; }
+  .nm-nav-out { gap: 6px; }
 }
 
 /* ---------- 财政：账本分组、债券、债务与流水 ---------- */
