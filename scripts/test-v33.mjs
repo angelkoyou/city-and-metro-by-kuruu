@@ -83,7 +83,7 @@ assert.equal(F.autoOn('bj', 2025), true, '2025 年上市');
 const gA = mkG(2026, [], { a: { id: 'a', speed: 80 }, b: { id: 'b', speed: 160 } });
 assert.deepEqual(Array.from(F.buyList(gA, 'a').list, m => m.id), ['gen-auto'], '普通线路只卖全自动无人驾驶车');
 assert.deepEqual(Array.from(F.buyList(gA, 'b').list, m => m.id), ['gen-d160'], '160 线路只卖 D 型无人列车（无人驾驶车跑不了 160）');
-assert.equal(F.buyList(gA, 'a').soon.length, 0, '无人驾驶时代没有「即将开放」的其他车型');
+assert.deepEqual(Array.from(F.buyList(gA, 'a').soon, m => m.id), ['gen-super'], '无人驾驶时代只剩下一代主力（2030 年的 T7 超级列车）在「即将开放」里');
 const gOld = mkG(2024, [], { a: { id: 'a', speed: 80 } });
 assert.ok(F.buyList(gOld, 'a').list.length > 1, '上市前仍按年代卖多种车型');
 assert.ok(F.buyList(gOld, 'a').list.every(m => !m.only160));

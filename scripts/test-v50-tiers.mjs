@@ -1,4 +1,4 @@
-// v5.0 回归：车型分级 T1–T6、自动配置只补主力车型、城市特色车补差价升级。
+// v5.0 回归：车型分级 T1–T7（v5.5 加入 T7）、自动配置只补主力车型、城市特色车补差价升级。
 // 覆盖：F.TRUNK 一款一级、F.tierOf/tierScore 的城市定级与单调性、D 型车独立、
 //       F.canAutoPick / autoConfigRun / allocPlan 的城市特色车门禁、
 //       F.staleTech / techQuote / upgradeTech 对城市特色车的升级与状态更新。
@@ -55,7 +55,7 @@ const autoRoute = { lineId: 'L1', cars: 8, cycleSec: 3600, stIds: ['a', 'b'], st
 // ================= 1. 主力车型 T1–T6，一款一级 =================
 assert.equal(F.TRUNK.length, F.TIER_N, '主力车型数量与等级数量一致');
 const tiers = F.TRUNK.map(id => F.model(id).t);
-assert.deepEqual(Array.from(tiers), [1, 2, 3, 4, 5, 6], '主力车型按上市顺序写入 T1–T6');
+assert.deepEqual(Array.from(tiers), [1, 2, 3, 4, 5, 6, 7], '主力车型按上市顺序写入 T1–T7');
 assert.equal(new Set(tiers).size, F.TIER_N, '每个 T 级只有一款主力车型');
 for (const id of F.TRUNK) {
   const m = F.model(id);
@@ -72,9 +72,14 @@ for (let i = 1; i < F.TRUNK.length; i++) {
   assert.ok(b.cap >= a.cap, '后一级定员不下降：' + b.id);
   assert.ok(b.ops <= a.ops, '后一级运营成本不上升：' + b.id);
   assert.ok(b.kmh >= a.kmh, '后一级限速不下降：' + b.id);
-  assert.ok(F.tierScore(b) > F.tierScore(a), '后一级综合性能更高：' + b.id);
+  assert.ok(F.tierScore(b) >= F.tierScore(a), '后一级综合性能不下降：' + b.id);
 }
-console.log('PASS 1 主力车型 T1–T6，一款一级，等级与性能同序');
+// 综合性能指标在 320 人/节、0.75 倍运营成本、120 km/h 处封顶：T6 与 T7 同为满分，
+// T7 的优势体现在实际定员与运营成本上（800 人 vs 320 人、0.5 倍 vs 0.75 倍）。
+assert.equal(F.tierScore(F.model('gen-super')), 2, 'T7 综合性能到顶');
+assert.ok(F.model('gen-super').cap > F.model('gen-auto').cap, 'T7 定员高于 T6');
+assert.ok(F.model('gen-super').ops < F.model('gen-auto').ops, 'T7 运营成本低于 T6');
+console.log('PASS 1 主力车型 T1–T7，一款一级，等级与性能同序');
 
 // ================= 2. 城市特色车型同尺定级 =================
 // 同一把尺子：相邻两款主力车型综合性能的中点为分档线，正好落在中点时取高档
@@ -94,7 +99,7 @@ for (const city of F.CITY_ORDER) {
     const m = F.model(id);
     cityCount++;
     const t = F.tierOf(m);
-    assert.ok(t >= 1 && t <= F.TIER_N, '城市特色车型等级在 T1–T6 内：' + id);
+    assert.ok(t >= 1 && t <= F.TIER_N, '城市特色车型等级在 T1–T7 内：' + id);
     assert.equal(F.isCity(m), true);
     assert.equal(F.tierKind(m), 'city');
     assert.equal(F.tierLabel(m), 'T' + t);

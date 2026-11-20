@@ -53,7 +53,7 @@ const mkG = (o = {}) => {
 };
 
 // ================= 1. 科技树结构：单主干 + 9 条城市支线 + 160 支线 =================
-assert.deepEqual(Array.from(F.TRUNK), ['gen-early', 'gen-classic', 'gen-steel', 'gen-a', 'gen-eco', 'gen-auto'], '主干 6 个世代');
+assert.deepEqual(Array.from(F.TRUNK), ['gen-early', 'gen-classic', 'gen-steel', 'gen-a', 'gen-eco', 'gen-auto', 'gen-super'], '主干 7 个世代（v5.5 加入 T7 超级列车）');
 assert.equal(F.CITY_ORDER.length, 9, '9 条城市支线');
 assert.equal(Object.keys(F.CITY_BRANCH).length, 9);
 for (const id of F.CITY_ORDER) assert.ok(Array.isArray(F.CITY_BRANCH[id]) && F.CITY_BRANCH[id].length, id + ' 支线不能为空');
@@ -70,7 +70,7 @@ for (const id of F.TRUNK) {
   assert.equal(m.maps, null, '主干 ' + id + ' 应为通用车型');
   assert.ok(!m.only160, '主干 ' + id + ' 不应是 160 专用');
 }
-assert.deepEqual(Array.from(F.BRANCH_160), ['gen-d160'], '160 支线只有 D 型车');
+assert.deepEqual(Array.from(F.BRANCH_160), ['gen-d160', 'gen-d160-super'], '160 支线有两款 D 型车（v5.5 加入 D 型超级列车）');
 assert.equal(F.model('gen-d160').fixedCars, 8);
 // 地图 → 城市支线：经典广州图与教程图
 assert.equal(F.cityOfMap('gz'), 'gz');
@@ -87,15 +87,20 @@ console.log('PASS 科技树结构（主干 6 世代 / 9 城市支线 / 160 支�
 // ================= 2. 节点按年份自动点亮 =================
 const t1990 = F.treeNodes('gz', 1990, 'gz');
 assert.equal(t1990.city, 'gz');
-assert.deepEqual(Array.from(t1990.trunk, n => n.lit), [true, true, true, true, false, false], '1990 年只点亮到 A 型车');
-assert.deepEqual(Array.from(t1990.trunk, n => n.sale), [false, false, true, true, false, false], '1990 年在售钢制车与 A 型车');
+assert.deepEqual(Array.from(t1990.trunk, n => n.lit), [true, true, true, true, false, false, false], '1990 年只点亮到 A 型车');
+assert.deepEqual(Array.from(t1990.trunk, n => n.sale), [false, false, true, true, false, false, false], '1990 年在售钢制车与 A 型车');
 assert.equal(t1990.branch.length, 3, '广州支线 3 个节点');
 assert.equal(t1990.branch.filter(n => n.lit).length, 0, '1990 年广州专属车型都还没上市');
-assert.equal(t1990.d160[0].lit, false, '1990 年还没有 160 支线');
+assert.equal(t1990.d160.length, 2, '160 支线有两款 D 型车');
+assert.equal(t1990.d160.filter(n => n.lit).length, 0, '1990 年还没有 160 支线');
 const t2026 = F.treeNodes('gz', 2026, 'gz');
-assert.equal(t2026.trunk.filter(n => !n.lit).length, 0, '2026 年主干全部点亮');
+assert.deepEqual(Array.from(t2026.trunk.filter(n => !n.lit), n => n.id), ['gen-super'], '2026 年主干只差 2030 年的 T7');
 assert.equal(t2026.branch.filter(n => !n.lit).length, 0, '2026 年广州支线全部点亮');
+const t2030 = F.treeNodes('gz', 2030, 'gz');
+assert.equal(t2030.trunk.filter(n => !n.lit).length, 0, '2030 年主干全部点亮（含 T7 超级列车）');
+assert.deepEqual(Array.from(t2030.d160.filter(n => !n.lit), n => n.id), [], '2030 年两款 D 型车都已点亮');
 assert.equal(t2026.d160[0].lit, true);
+assert.deepEqual(Array.from(t2026.d160.filter(n => !n.lit), n => n.id), ['gen-d160-super'], '2026 年 D 型超级列车还没点亮');
 // retired：停售年份之后
 assert.equal(t2026.trunk[0].retired, true);
 assert.equal(t2026.trunk[0].sale, false);

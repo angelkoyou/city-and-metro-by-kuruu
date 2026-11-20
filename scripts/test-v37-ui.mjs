@@ -155,14 +155,14 @@ try {
   assert.ok(tree.nodes >= 8, '节点数量够多：' + tree.nodes);
   assert.ok(tree.lit >= 3, '按年份点亮了一部分节点：' + tree.lit);
   assert.equal(tree.cities, 9, '9 个城市支线切换按钮');
-  assert.deepEqual(tree.labels.slice(0, 1), ['主力'], '主干行改称主力，对应 T1–T6');
-  // v5.0：主力一行 T1–T6 一款一级，160 行标 D；城市支线也带 T 级
+  assert.deepEqual(tree.labels.slice(0, 1), ['主力'], '主干行改称主力，对应 T1–T7');
+  // v5.0：主力一行 T1–T7（v5.5 加入 T7）一款一级，160 行标 D；城市支线也带 T 级
   const ttTiers = await E('[...document.querySelectorAll(".tt-row")].map(r=>[...r.querySelectorAll(".tt-tier")].map(x=>x.textContent.trim()))');
-  assert.deepEqual(ttTiers[0], ['T1', 'T2', 'T3', 'T4', 'T5', 'T6'], '主力节点的等级依次为 T1–T6：' + ttTiers[0].join('/'));
-  assert.deepEqual(ttTiers[ttTiers.length - 1], ['D'], '160 支线上的 D 型车不参与 T 级');
-  assert.ok(ttTiers[1].every(t => /^T[1-6]$/.test(t)), '城市支线节点也有 T 级：' + ttTiers[1].join('/'));
+  assert.deepEqual(ttTiers[0], ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'], '主力节点的等级依次为 T1–T7：' + ttTiers[0].join('/'));
+  assert.deepEqual(ttTiers[ttTiers.length - 1], ['D', 'D'], '160 支线上的两款 D 型车不参与 T 级');
+  assert.ok(ttTiers[1].every(t => /^T[1-7]$/.test(t)), '城市支线节点也有 T 级：' + ttTiers[1].join('/'));
   const ttNote = await E('document.querySelector(".tt-wrap .note").textContent');
-  assert.match(ttNote, /T1–T6/, '科技树说明写明 T1–T6 分级');
+  assert.match(ttNote, /T1–T7/, '科技树说明写明 T1–T7 分级');
   assert.match(ttNote, /D 型车是独立的 160/, '说明写明 D 型车独立');
   const switches = await E('[...document.querySelectorAll(".fo-auto .switch")].map(b=>b.getAttribute("aria-label"))');
   assert.ok(switches.indexOf('自动配置列车') >= 0, '有「自动配置列车」总开关：' + switches.join('/'));

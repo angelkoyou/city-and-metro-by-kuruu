@@ -21,22 +21,47 @@
     paint: { era: 'current', body: 'line', band: '#26303b', roof: 'line', win: '#ffffff' },
     whiteNew: { era: 'current', body: '#f2f4f6', band: 'line', roof: '#d5dbe2', win: '#ffffff' },
     future: { era: 'future', body: '#f1f4f7', band: 'line', roof: '#e3e8ee', win: '#d8f2ff' },
+    // v5.5 超级列车：两套新式样。色带一律写 'line'，图例与地图上的色带都取所属线路的颜色。
+    // T7 是单体宽体车（车顶能量舱 + 宽色带 + 细腰线），D 型超级列车是双层车（两层车窗夹一条色带）。
+    super: { era: 'super', body: '#f4f7fb', band: 'line', roof: '#dde6f0', win: '#d6f3ff' },
+    superD: { era: 'superD', body: '#eef3f9', band: 'line', roof: '#cfdae7', win: '#dcf5ff' },
   };
   const M = function (o) { return Object.assign({ maps: null, max: 8, life: 30, kmh: 80 }, o, { look: Object.assign({}, LOOK[o.look] || LOOK.steel, o.lookX || {}) }); };
+  // ---------------- v5.5 超级列车定价：沿用现有价格模型 ----------------
+  // 现有通用车型的每节价格可以还原成「定员 × 年代单价」：每节价格 ≈ 定员^0.7 × u(年) × 5.6，
+  // 其中年代单价 u(年) = 0.65 + 0.0083 × (年 − 1900)（万元/人，1990 年不变价）。
+  // 用它复算 T3–T6 与 D 型车，误差都在 8% 以内：T4 大运量 A 型车算出 420（正好 420）、
+  // T6 全自动无人驾驶车算出 540（正好 540）、T3 算出 320（300）、T5 算出 490（460）、D 型车算出 660（620）。
+  // 运营成本与最高时速只影响运营表现，不进入车价——现有车型的价格同样主要随定员与年代变化。
+  // 新车型的每节价格直接由它算出，再交给 F.price 乘编组、本城造价水平、当年造价指数与难度系数。
+  const listPrice = function (cap, from) {
+    const unit = 0.65 + 0.0083 * (from - 1900);
+    return Math.round(Math.pow(cap, 0.7) * unit * 5.6 / 10) * 10;
+  };
+  F.listPrice = listPrice;
   const MODELS = F.MODELS = [
     // 通用车型（虚构）：各城市都能买，按年代更替。
-    // v5.0：t 是主力车型等级，一款一级（T1 最早、T6 最新），与上市年份顺序严格一致。
+    // v5.0：t 是主力车型等级，一款一级（T1 最早、T7 最新），与上市年份顺序严格一致。
     M({ id: 'gen-early', t: 1, name: '早期木质电动车', short: '木质车', from: 1900, to: 1938, cap: 170, price: 110, ops: 1.05, life: 35, max: 6, kmh: 50, look: 'wood', desc: '木质车身、通风顶，车厢小、运营费用高' }),
     M({ id: 'gen-classic', t: 2, name: '战后钢制通勤车', short: '钢制车', from: 1936, to: 1974, cap: 220, price: 170, ops: 1.03, life: 32, max: 6, kmh: 70, look: 'classicLine', desc: '全钢车身、整车涂装' }),
     M({ id: 'gen-steel', t: 3, name: '不锈钢 B 型车', short: 'B 型车', from: 1968, to: 2015, cap: 250, price: 300, ops: 1, kmh: 80, look: 'steel', desc: '车宽 2.8 m 的标准地铁车' }),
     M({ id: 'gen-a', t: 4, name: '大运量 A 型车', short: 'A 型车', from: 1985, to: 9999, cap: 310, price: 420, ops: 0.96, kmh: 80, look: 'white', desc: '车宽 3 m、每节 5 对车门的大运量车' }),
     M({ id: 'gen-eco', t: 5, name: '节能变频车', short: '节能车', from: 2008, to: 9999, cap: 320, price: 460, ops: 0.85, kmh: 100, look: 'paint', desc: '永磁电机与再生制动，运营费用低' }),
     M({ id: 'gen-auto', t: 6, name: '全自动无人驾驶车', short: '无人驾驶车', from: 2025, to: 9999, cap: 320, price: 540, ops: 0.75, kmh: 120, look: 'future', desc: '无人驾驶、贯通客室，运营费用最低' }),
+    // v5.5：T7 超级列车。2030 年起接替全自动无人驾驶车成为新一代主力：800 人/节、运营成本为基准的 0.5 倍。
+    // 车价不是手填的，由上面的 listPrice（定员 × 年代单价）自动算出，再交给 F.price 折算到当年。
+    M({ id: 'gen-super', t: 7, name: '超级列车', short: '超级车', from: 2030, to: 9999, cap: 800, price: listPrice(800, 2030), ops: 0.5, life: 40, kmh: 120, look: 'super',
+      desc: '800 人/节的宽体超级列车，贯通式客室与能量回收制动，运营成本只有基准的一半；图例色带随所属线路颜色变化' }),
     // v3.0：D 型无人列车。固定 8 节编组、每节 500 人；运营成本为基准的 0.75 倍；最高 160 km/h，
     // 只能在 160 轨道上运行（only160）；2005 年起开放——160 轨道的开放年份也由它决定。
     M({ id: 'gen-d160', name: 'D 型无人列车', short: 'D 型车', from: 2005, to: 9999, cap: 500, price: 620, ops: 0.75, life: 35,
       max: 8, kmh: 160, look: 'future', lookX: { win: '#dff7ff' }, only160: true, fixedCars: 8,
       desc: '固定 8 节编组、每节 500 人的全自动无人列车，只能在 160 km/h 高速轨道上运行；运营成本为基准的 0.75 倍' }),
+    // v5.5：160 科技线的第二款 D 型车。双层 1000 人/节、运营成本 0.5 倍，2030 年起成为 160 轨道上的升级目标；
+    // 车价同样由 listPrice 按定员与年代算出。
+    M({ id: 'gen-d160-super', name: 'D 型超级列车', short: 'D 型超级车', from: 2030, to: 9999, cap: 1000, price: listPrice(1000, 2030), ops: 0.5, life: 40,
+      max: 8, kmh: 160, look: 'superD', only160: true, fixedCars: 8,
+      desc: '固定 8 节编组、双层每节 1000 人的 D 型超级列车，只能在 160 km/h 高速轨道上运行；运营成本为基准的 0.5 倍' }),
     // 广州
     M({ id: 'gz-a1', maps: ['gz'], name: '广州地铁 A1 型（西门子）', short: 'A1 型', from: 1995, to: 2004, cap: 310, price: 560, ops: 0.97, max: 6, look: 'white', desc: '1 号线引进车，白色车身配线路色带' }),
     M({ id: 'gz-l4', maps: ['gz'], name: '广州地铁直线电机 L4 型', short: 'L4 型', from: 2005, to: 2016, cap: 240, price: 420, ops: 0.93, max: 6, kmh: 90, look: 'paint', desc: '4、5 号线直线电机车，爬坡与过弯能力强' }),
@@ -90,10 +115,24 @@
   F.descOf = function (m) { return m.desc; };
   const BY = new Map(MODELS.map(function (m) { return [m.id, m]; }));
   F.model = function (id) { return BY.get(id) || BY.get('gen-a'); };
+  // v5.5：160 支线有两款 D 型车（D 型无人列车 → D 型超级列车）。凡是「160 线该用什么车」的判断
+  // （随线配车、自动配置、科技树升级目标、购车默认选中）都走 dModelFor：取当年最新、本城可买的那一款。
+  F.D_MODELS = ['gen-d160', 'gen-d160-super'];
+  F.dModelId = 'gen-d160';   // 首款 D 型车：旧存档与「这是不是 D 型车」的判断仍以它为基准
+  F.dModelFor = function (mapId, y) {
+    let best = null;
+    for (const id of F.D_MODELS) {
+      const m = BY.get(id); if (!m) continue;
+      if (y < m.from || y > m.to) continue;
+      if (m.maps && m.maps.indexOf(mapId) < 0) continue;
+      if (!best || m.from >= best.from) best = m;
+    }
+    return best;
+  };
 
   // ---------------- v3.7 车型科技树 ----------------
   // 单主干（通用车型按世代）+ 9 条城市支线 + 160 支线。节点只按年份点亮，运行时计算、不写存档。
-  F.TRUNK = ['gen-early', 'gen-classic', 'gen-steel', 'gen-a', 'gen-eco', 'gen-auto'];
+  F.TRUNK = ['gen-early', 'gen-classic', 'gen-steel', 'gen-a', 'gen-eco', 'gen-auto', 'gen-super'];
   F.CITY_BRANCH = {
     gz: ['gz-a1', 'gz-l4', 'gz-a8'],
     sh: ['sh-ac01', 'sh-a', 'sh-16'],
@@ -106,13 +145,13 @@
     tk: ['tk-1000', 'tk-300', 'tk-2000', 'tk-5000', 'tk-01', 'tk-05', 'tk-10000', 'tk-n1000', 'tk-13000'],
   };
   F.CITY_ORDER = ['gz', 'sh', 'bj', 'hz', 'wh', 'hk', 'tp', 'pa', 'tk'];
-  F.BRANCH_160 = ['gen-d160'];
-  // ---------------- v5.0 车型分级：主力 T1–T6，城市特色同尺定级 ----------------
-  // 主力车型（主干）一款一级：T1 木质车 → T6 全自动无人驾驶车，等级与上市年份严格对应。
+  F.BRANCH_160 = ['gen-d160', 'gen-d160-super'];
+  // ---------------- v5.0 车型分级：主力 T1–T7，城市特色同尺定级 ----------------
+  // 主力车型（主干）一款一级：T1 木质车 → T7 超级列车（v5.5 新增），等级与上市年份严格对应。
   // 城市特色车型用同一把尺子评定：按每节定员、运营成本与最高时速折算综合性能（0–2 分），
   // 落到综合性能最接近的主力档位——同一等级的城市特色车与主力车性能相当，可以直接横向比较。
-  // D 型车是独立的 160 支线，不参与 T 级，等级显示为 D。
-  F.TIER_N = 6;
+  // D 型车是独立的 160 支线（v5.5 起有两款，升级取当年最新的那一款），不参与 T 级，等级显示为 D。
+  F.TIER_N = 7;
   // 权重：定员 1.0（320 人/节满分）、运营成本 0.5（1.05 → 0.75 满分）、最高时速 0.5（120 km/h 满分）
   const tierScore = function (m) {
     const cap = Math.max(0, Math.min(1, (m.cap || 0) / 320));
@@ -145,7 +184,7 @@
     return F.tierLabel(m) + ' ' + (F.isCity(m) ? '城市' : '主力');
   };
   // ---------------- v4.4 车型归属与统一选用规则 ----------------
-  // 科技树分三层：主干（主力 T1–T6）、160 支线（D 型）、城市支线（城市特色车型）。
+  // 科技树分三层：主干（主力 T1–T7）、160 支线（D 型）、城市支线（城市特色车型）。
   // 自动选用——新线随线配车、购车弹窗的默认选中、科技树升级目标、自动配置买车——只认主力与 D 型车；
   // 城市特色车型只能由玩家在购车弹窗里手动购买、手动调入，任何自动流程都不得代为添加或购买。
   // 所有判断都走这里，避免各功能各写一套规则。
@@ -173,7 +212,7 @@
   // 这时不自动配车、也不自动买车，交给玩家手动选购。
   F.trunkModel = function (mapId, y, need) {
     need = need || 0;
-    if (need >= 160) { const d = BY.get(F.dModelId); return d && y >= d.from && y <= d.to && (!d.maps || d.maps.indexOf(mapId) >= 0) ? d : null; }
+    if (need >= 160) { const d = F.dModelFor(mapId, y); return d || null; }
     const all = F.TRUNK.map(function (id) { return BY.get(id); }).filter(function (m) {
       return m && y >= m.from && y <= m.to && (!m.maps || m.maps.indexOf(mapId) >= 0);
     });
@@ -266,15 +305,22 @@
     if (!lid) return !m.only160 || F.has160(g);   // 车辆段：全网有 160 线路才卖 D 型车
     return F.lineFit(m, kmh);
   };
-  // v3.3：全自动无人驾驶车（gen-auto）上市后进入「无人驾驶时代」——除 160 专用的 D 型无人列车外，
-  // 其余车型一律停售，玩家只能买全自动无人驾驶车。车型是否可买只看上市年份与该城市是否有售。
+  // v3.3：全自动无人驾驶车（gen-auto）上市后进入「无人驾驶时代」——除 160 专用的 D 型车外，
+  // 其余旧车型一律停售，玩家只买得到当前这一代及以后的主力车型（v5.5：2030 年起是 T7 超级列车）。
   F.autoModelId = 'gen-auto';
   F.autoOn = function (mapId, y) {
     const m = BY.get(F.autoModelId);
     return !!m && y >= m.from && y <= m.to && (!m.maps || m.maps.indexOf(mapId) >= 0);
   };
   F.autoUnlocked = function (g) { return !!g && F.autoOn(g.mapId, g.clock.y); };
-  F.autoOnly = function (m) { return !!m && (m.id === F.autoModelId || !!m.only160); };
+  // 「当前一代」= 无人驾驶车及其之后的主力车型（T6、T7…），加上 160 支线的所有 D 型车。
+  // 用上市年份判断而不是写死 id：以后再加新一代主力，这里不用改。
+  F.autoOnly = function (m) {
+    if (!m) return false;
+    if (m.only160) return true;
+    const base = BY.get(F.autoModelId);
+    return F.isTrunk(m) && !!base && m.from >= base.from;
+  };
   // 某条线路（lid 为空时：车辆段）在当年能买、以及以后才开放的车型。
   // defaultModel：购车弹窗默认选中的车型——只取主干（160 线路取 D 型车），绝不默认城市特色车型。
   F.buyList = function (g, lid) {
@@ -310,9 +356,9 @@
   };
   // 某年代的车型：只用于开局既有线路与旧存档的「历史车队」（不是新建线路的默认车型）。
   // 这里保留本城真实车型（含城市特色车型），因为它们是被玩家接管的历史资产，不参与自动选用规则。
-  // v3.3：无人驾驶时代统一用全自动无人驾驶车（与购买列表一致）
+  // v3.3：无人驾驶时代统一用当年的最新一代主力车型（v5.5：2025–2029 是无人驾驶车，2030 起是超级列车）
   F.eraModel = function (mapId, y) {
-    if (F.autoOn(mapId, y)) return BY.get(F.autoModelId);
+    if (F.autoOn(mapId, y)) return F.trunkModel(mapId, y, 0) || BY.get(F.autoModelId);
     const a = F.available(mapId, y).filter(function (m) { return !m.only160; }); if (a.length) return a[0];
     const own = MODELS.filter(function (m) { return (!m.maps || m.maps.indexOf(mapId) >= 0) && m.from <= y; }).sort(function (a, b) { return b.from - a.from; });
     return own[0] || BY.get('gen-early');
@@ -532,8 +578,8 @@
   // ---------------- 玩家操作 ----------------
   F.buy = function (g, lid, svc, modelId, cars, n) {
     const m = F.model(modelId), y = g.clock.y;
-    // v3.3：无人驾驶时代只卖全自动无人驾驶车（D 型无人列车是 160 专用，仍可买）
-    if (F.autoUnlocked(g) && !F.autoOnly(m)) return { error: '全自动无人驾驶车已上市，' + F.nameOf(m) + ' 已停售' };
+    // v3.3：新一代车型上市后旧车型停售（v5.5：2030 年起 T6 与 T7 同售，更早的车型停售）
+    if (F.autoUnlocked(g) && !F.autoOnly(m)) return { error: '最新一代主力车型已上市，' + F.nameOf(m) + ' 已停售' };
     if (y < m.from || y > m.to || (m.maps && m.maps.indexOf(g.mapId) < 0)) return { error: F.nameOf(m) + ' 现在买不到' };
     if (m.fixedCars && cars !== m.fixedCars) return { error: F.shortOf(m) + ' 是固定 ' + m.fixedCars + ' 节编组' };
     if (cars > m.max) return { error: F.shortOf(m) + ' 最长 ' + m.max + ' 节' };
@@ -545,20 +591,24 @@
     changed(g); return { ok: true, cost: cost };
   };
   // ---------------- v3.3 无人驾驶升级 ----------------
-  // 一条线路上除全自动无人驾驶车与 D 型无人列车以外的列车（可补差价改装）。
-  // 160 轨道只认 D 型车，那条线由下面的 D 型升级处理，不再走无人驾驶车这条通道
+  // 一条线路上除「当前一代主力车型」与 D 型车以外的列车（可补差价改装）。
+  // 160 轨道只认 D 型车，那条线由下面的 D 型升级处理，不再走这条通道。
+  // v5.5：目标车型动态取当年最新主力——2025–2029 是全自动无人驾驶车（T6），2030 起是超级列车（T7）。
+  F.autoTarget = function (g) { return g ? F.trunkModel(g.mapId, g.clock.y, 0) : null; };
   F.staleAuto = function (g, lid) {
     if (!F.autoUnlocked(g) || !g.fleet) return [];
     if (g.net.lines[lid] && CM.Metro.lineKmh(g.net.lines[lid]) >= 160) return [];
+    const tg = F.autoTarget(g); if (!tg) return [];
     return g.fleet.trains.filter(function (t) {
       const m = BY.get(t.model);
-      return t.line === lid && t.model !== F.autoModelId && !(m && m.only160) && F.canTechUpgrade(t);
+      return t.line === lid && t.model !== tg.id && !(m && m.only160) && F.canTechUpgrade(t);
     });
   };
   // 改装报价：按当年列车价格补差价（新车型价 − 原车型价，负数按 0 计），编组节数不变
   F.autoQuote = function (g, list) {
-    const auto = BY.get(F.autoModelId), y = g.clock.y;
+    const auto = F.autoTarget(g), y = g.clock.y;
     let cost = 0, cars = 0, n = 0;
+    if (!auto) return { n: 0, cars: 0, cost: 0 };
     for (const t of list) {
       const old = BY.get(t.model) || F.model(t.model);
       cost += Math.max(0, F.price(g, auto, t.cars, y) - F.price(g, old, t.cars, y));
@@ -566,11 +616,13 @@
     }
     return { n: n, cars: cars, cost: cost };
   };
-  // 一键把整条线路的其余车型改装为全自动无人驾驶车：补差价、编组不变、车龄不变（车体还是那些车）
+  // 一键把整条线路的其余车型改装为当年最新主力车型：补差价、编组不变、车龄不变（车体还是那些车）
   F.upgradeAuto = function (g, lid) {
     const list = F.staleAuto(g, lid);
     if (!list.length) return { error: '这条线路没有需要升级的列车' };
-    const auto = BY.get(F.autoModelId), y = g.clock.y, q = F.autoQuote(g, list), name = g.net.lines[lid] ? g.net.lines[lid].name : '线路';
+    const auto = F.autoTarget(g);
+    if (!auto) return { error: '当前没有能跑这条线路的主力车型' };
+    const y = g.clock.y, q = F.autoQuote(g, list), name = g.net.lines[lid] ? g.net.lines[lid].name : '线路';
     if (!g.econ.isFree() && !g.econ.canAffordBuild(q.cost)) return { error: '资金不足：需要 ' + U.fmtMoney(q.cost) };
     if (q.cost > 0) g.econ.spendBuild({ construction: q.cost }, '列车升级：' + name + ' → ' + auto.short + ' ' + q.n + ' 列', { y: y, m: g.clock.m, d: g.clock.d }, true);
     for (const t of list) {
@@ -578,20 +630,21 @@
       t.cost = (t.cost || 0) + Math.max(0, F.price(g, auto, t.cars, y) - F.price(g, old, t.cars, y));
       t.model = auto.id;
     }
-    g.logEvent({ tag: '运营', title: '列车升级：' + auto.short + ' × ' + q.n, desc: name + ' 的 ' + q.n + ' 列车改装为全自动无人驾驶车（编组不变，共 ' + q.cars + ' 节），补差价 ' + U.fmtMoney(q.cost) + '。' });
+    g.logEvent({ tag: '运营', title: '列车升级：' + auto.short + ' × ' + q.n, desc: name + ' 的 ' + q.n + ' 列车改装为 ' + auto.short + '（编组不变，共 ' + q.cars + ' 节），补差价 ' + U.fmtMoney(q.cost) + '。' });
     changed(g); return { ok: true, n: q.n, cars: q.cars, cost: q.cost };
   };
   // ---------------- v3.4 160 轨道：非 D 型车补差价升级 ----------------
-  // 一条 160 轨道上除 D 型无人列车以外的列车。D 型是固定 8 节编组，改装后按 8 节计
-  F.dModelId = 'gen-d160';
+  // 一条 160 轨道上除「当年最新 D 型车」以外的列车。D 型是固定 8 节编组，改装后按 8 节计。
+  // v5.5：2030 年起目标从 D 型无人列车换成 D 型超级列车，旧 D 型车也进入待升级列表。
+  F.dTarget = function (g) { return g ? F.dModelFor(g.mapId, g.clock.y) : null; };
   F.staleD = function (g, lid) {
     if (!g.fleet || !g.net.lines[lid] || CM.Metro.lineKmh(g.net.lines[lid]) < 160) return [];
-    if (!BY.get(F.dModelId)) return [];
-    return g.fleet.trains.filter(function (t) { return t.line === lid && t.model !== F.dModelId && F.canTechUpgrade(t); });
+    const d = F.dTarget(g); if (!d) return [];
+    return g.fleet.trains.filter(function (t) { return t.line === lid && t.model !== d.id && F.canTechUpgrade(t); });
   };
-  // 改装报价：按当年价格补差价（D 型 8 节 − 原车型原编组，负数按 0 计）
+  // 改装报价：按当年价格补差价（当年最新 D 型车的固定编组 − 原车型原编组，负数按 0 计）
   F.dQuote = function (g, list) {
-    const d = BY.get(F.dModelId), y = g.clock.y, dc = d.fixedCars || 8;
+    const d = F.dTarget(g) || BY.get(F.dModelId), y = g.clock.y, dc = d.fixedCars || 8;
     let cost = 0, cars = 0, oldCars = 0, n = 0;
     for (const t of list) {
       const old = BY.get(t.model) || F.model(t.model);
@@ -600,11 +653,13 @@
     }
     return { n: n, cars: cars, oldCars: oldCars, cost: cost, carsEach: dc };
   };
-  // 一键把整条 160 轨道的其余车型改装为 D 型无人列车：补差价、车龄不变；编组统一为 D 型的固定 8 节
+  // 一键把整条 160 轨道的其余车型改装为当年最新的 D 型车：补差价、车龄不变；编组统一为 D 型的固定 8 节
   F.upgradeD = function (g, lid) {
     const list = F.staleD(g, lid);
     if (!list.length) return { error: '这条 160 轨道没有需要升级的列车' };
-    const d = BY.get(F.dModelId), y = g.clock.y, q = F.dQuote(g, list), name = g.net.lines[lid] ? g.net.lines[lid].name : '线路';
+    const d = F.dTarget(g);
+    if (!d) return { error: '当前还没有可以运行 160 km/h 的 D 型车' };
+    const y = g.clock.y, q = F.dQuote(g, list), name = g.net.lines[lid] ? g.net.lines[lid].name : '线路';
     if (!g.econ.isFree() && !g.econ.canAffordBuild(q.cost)) return { error: '资金不足：需要 ' + U.fmtMoney(q.cost) };
     if (q.cost > 0) g.econ.spendBuild({ construction: q.cost }, '列车升级：' + name + ' → ' + d.short + ' ' + q.n + ' 列', { y: y, m: g.clock.m, d: g.clock.d }, true);
     for (const t of list) {
@@ -612,7 +667,7 @@
       t.cost = (t.cost || 0) + Math.max(0, F.price(g, d, q.carsEach, y) - F.price(g, old, t.cars, y));
       t.model = d.id; t.cars = q.carsEach;
     }
-    g.logEvent({ tag: '运营', title: '列车升级：' + d.short + ' × ' + q.n, desc: name + ' 的 ' + q.n + ' 列车改装为 D 型无人列车（固定 ' + q.carsEach + ' 节，共 ' + q.cars + ' 节），补差价 ' + U.fmtMoney(q.cost) + '。' });
+    g.logEvent({ tag: '运营', title: '列车升级：' + d.short + ' × ' + q.n, desc: name + ' 的 ' + q.n + ' 列车改装为 ' + d.short + '（固定 ' + q.carsEach + ' 节，共 ' + q.cars + ' 节），补差价 ' + U.fmtMoney(q.cost) + '。' });
     changed(g); return { ok: true, n: q.n, cars: q.cars, cost: q.cost };
   };
   // ---------------- v3.5 同车型扩编：小编组列车补差价加挂车厢 ----------------
@@ -977,11 +1032,57 @@
     }
   };
 
-  // ---------------- 车型侧视图（购车界面） ----------------
+  // ---------------- 车型侧视图（购车界面 / 图例） ----------------
+  // v5.5：新增两款超级列车的图例。两套式样都是原创绘制，色带一律取调用方传入的线路颜色：
+  //   super  —— 单体宽体车：车顶能量舱 + 细腰线（同色、半透明）+ 宽裙带，流线圆头；
+  //   superD —— 双层车：上下两层车窗，中间夹一条色带、裙边再压一条细带，尖头车鼻。
   F.sideSVG = function (m, line, w) {
     const L = m.look, pick = function (c) { return c === 'line' ? line : c; }, body = pick(L.body), band = pick(L.band), roof = pick(L.roof), W = w || 168, H = 40;
+    // 车门、车窗、转向架的固定色：与既有车型保持同一套线稿
+    const win = '#2b3a4a', bogie = '#39424d';
+    const windowRow = function (x, y, h) { let s = ''; for (let i = 0; i < 4; i++) s += '<rect x="' + (x + 6 + i * 17) + '" y="' + y + '" width="10" height="' + h + '" rx="1.2" fill="' + win + '" opacity="0.85"/>'; return s; };
+    const doors = function (x, y, h) { let s = ''; for (const fx of [0.3, 0.7]) s += '<rect x="' + (x + 74 * fx - 3) + '" y="' + y + '" width="6" height="' + h + '" fill="none" stroke="#1f2731" stroke-width="0.5" opacity="0.6"/>'; return s; };
+    const gear = function (x, cw) { return '<rect x="' + (x + 8) + '" y="31" width="14" height="3" rx="1" fill="' + bogie + '"/><rect x="' + (x + cw - 22) + '" y="31" width="14" height="3" rx="1" fill="' + bogie + '"/>'; };
+    // T7 超级列车：宽体单体车
+    const superCar = function (x, first) {
+      const cw = 74;
+      let s = '<rect x="' + x + '" y="9" width="' + cw + '" height="22" rx="8" fill="' + body + '" stroke="#1f2731" stroke-width="0.8"/>';
+      s += '<rect x="' + (x + 1) + '" y="7" width="' + (cw - 2) + '" height="3.5" rx="1.5" fill="' + roof + '"/>';
+      s += '<rect x="' + (x + 24) + '" y="4.6" width="30" height="2.6" rx="1.3" fill="' + roof + '"/>';          // 车顶能量舱
+      s += '<rect x="' + (x + 3) + '" y="10.6" width="' + (cw - 6) + '" height="1.3" fill="' + band + '" opacity="0.55"/>'; // 细腰线
+      s += windowRow(x, 12.8, 6.2);
+      s += '<rect x="' + (x + 2) + '" y="21" width="' + (cw - 4) + '" height="6.4" rx="2" fill="' + band + '"/>';   // 宽裙带
+      s += doors(x, 12.8, 15);
+      s += gear(x, cw);
+      if (first) {
+        // 流线车鼻：与车身同色，色带沿鼻锥收窄
+        s += '<path d="M' + (x + cw) + ' 9 Q' + (x + cw + 12) + ' 13 ' + (x + cw + 10) + ' 31 L' + (x + cw) + ' 31 Z" fill="' + body + '" stroke="#1f2731" stroke-width="0.8"/>';
+        s += '<path d="M' + (x + cw) + ' 21 Q' + (x + cw + 7.5) + ' 22 ' + (x + cw + 6) + ' 27.4 L' + (x + cw) + ' 27.4 Z" fill="' + band + '" opacity="0.9"/>';
+        s += '<rect x="' + (x + cw + 3) + '" y="13.5" width="4" height="2.6" rx="1" fill="#2b3a4a"/>';
+      }
+      return s;
+    };
+    // D 型超级列车：双层车
+    const superDCar = function (x, first) {
+      const cw = 74;
+      let s = '<rect x="' + x + '" y="5" width="' + cw + '" height="26" rx="7" fill="' + body + '" stroke="#1f2731" stroke-width="0.8"/>';
+      s += '<rect x="' + (x + 1) + '" y="3" width="' + (cw - 2) + '" height="3.2" rx="1.5" fill="' + roof + '"/>';
+      s += windowRow(x, 8.4, 5.2);                                                                           // 上层车窗
+      s += '<rect x="' + (x + 2) + '" y="15.2" width="' + (cw - 4) + '" height="4" rx="1.4" fill="' + band + '"/>'; // 两层之间：线路色带
+      s += windowRow(x, 20.6, 5.2);                                                                          // 下层车窗
+      s += '<rect x="' + (x + 2) + '" y="27.4" width="' + (cw - 4) + '" height="1.6" fill="' + band + '" opacity="0.75"/>'; // 裙边细带
+      s += doors(x, 8.4, 17.4);
+      s += gear(x, cw);
+      if (first) {
+        s += '<path d="M' + (x + cw) + ' 5 Q' + (x + cw + 11) + ' 12 ' + (x + cw + 9) + ' 18 Q' + (x + cw + 11) + ' 24 ' + (x + cw) + ' 31 Z" fill="' + body + '" stroke="#1f2731" stroke-width="0.8"/>';
+        s += '<rect x="' + (x + cw + 3) + '" y="10" width="4" height="3" rx="1" fill="#2b3a4a"/>';
+      }
+      return s;
+    };
     const ends = { early: 'square', classic: 'round', modern: 'square', current: 'round', future: 'pointed' }[L.era] || 'round';
     const car = function (x, first) {
+      if (L.era === 'super') return superCar(x, first);
+      if (L.era === 'superD') return superDCar(x, first);
       const cw = 74, r = ends === 'round' ? 7 : 3;
       let s = '<rect x="' + x + '" y="9" width="' + cw + '" height="22" rx="' + r + '" fill="' + body + '" stroke="#1f2731" stroke-width="0.8"/>';
       s += '<rect x="' + (x + 1) + '" y="7" width="' + (cw - 2) + '" height="3.5" rx="1.5" fill="' + roof + '"/>';
@@ -1188,7 +1289,7 @@
         const r = g.edit(function (n) { const l = n.lines[lid]; if (!l) return { error: '线路不存在' }; if (x.kmh === 80) delete l.speed; else l.speed = x.kmh; });
         if (r.error) self.toast(r.error, 'bad'); else {
           sfx(x.kmh > cur ? 'speedUp' : 'speedDown');
-          const nd = x.kmh >= 160 && g.fleet ? g.fleet.trains.filter(function (t) { return t.line === lid && t.model !== F.dModelId; }).length : 0;
+          const nd = x.kmh >= 160 && g.fleet ? g.fleet.trains.filter(function (t) { return t.line === lid && !F.is160Model(F.model(t.model)); }).length : 0;
           self.toast((L.name || '') + ' 运行速度改为 ' + x.kmh + ' km/h，确认建设后生效' + (nd ? '；本线有 ' + nd + ' 列非 D 型车，建设完成后可在本页补差价升级' : ''), 'info');
           self.rerenderPage();
         }
@@ -1425,7 +1526,7 @@
     const box = h('div');
     // 车型卡片：未开放的车型变灰、不能选，标出开放年份
     const card = function (m, lock) {
-      // v5.0：主力车型标 T1–T6（一款一级），城市特色车型同尺定级，D 型车独立标 D
+      // v5.0：主力车型标 T1–T7（一款一级），城市特色车型同尺定级，D 型车独立标 D
       const kids = [h('span', { class: 'fo-pic', html: F.sideSVG(m, col, 168) }),
         h('span', { class: 'fo-name' }, h('b', null, F.nameOf(m)), h('span', { class: 'fo-tier ' + F.tierKind(m) }, F.tierChip(m))),
         lock ? h('span', { class: 'fo-lock' }, ic('lock', 12), h('span', null, m.from + ' 年开放'), h('span', null, '还有 ' + (m.from - y) + ' 年'))
@@ -1443,7 +1544,7 @@
     };
     const draw = function () {
       box.replaceChildren();
-      if (shop.forced) box.appendChild(h('div', { class: 'callout info' }, '全自动无人驾驶车已上市：除 160 轨道专用的 D 型无人列车外，其余车型已停售。'));
+      if (shop.forced) box.appendChild(h('div', { class: 'callout info' }, '新一代主力车型已上市：除 160 轨道专用的 D 型车外，只卖当前这一代主力车型（T6 与 T7 同售）。'));
       const grid = h('div', { class: 'fo-shop' });
       for (const m of list) grid.appendChild(card(m, false));
       if (soon.length) {
@@ -1699,7 +1800,7 @@
           : !n.own ? ('仅' + F.cityLabel(city))
             : n.sale ? (now ? cur.tag : '在售')
               : n.retired ? '已停用' : '';
-        // v5.0：等级标签——主力 T1–T6 一款一级；城市特色车型按性能折算到同一标尺；D 型车独立
+        // v5.0：等级标签——主力 T1–T7 一款一级；城市特色车型按性能折算到同一标尺；D 型车独立
         const tierTip = n.kind === '160' ? 'D 型车：160 km/h 专用，独立于 T 级'
           : n.kind === 'trunk' ? '主力车型 T{v0}（一款一级）'.replace('{v0}', n.tier)
             : '城市特色车型：按定员、运营成本与最高时速折算为 T{v0}'.replace('{v0}', n.tier);
@@ -1721,9 +1822,9 @@
           }))),
         row('支线', nodes.branch, '本城最新'),
         row('160', nodes.d160, '160 专用'));
-      el.appendChild(h('div', { class: 'fl-h', style: { marginTop: '12px' } }, '车型科技树', h('span', { class: 'tiny muted', style: { marginLeft: '8px' } }, '主力 T1–T6 一款一级 · 城市特色同尺定级 · D 型车独立；节点按年份自动点亮')));
+      el.appendChild(h('div', { class: 'fl-h', style: { marginTop: '12px' } }, '车型科技树', h('span', { class: 'tiny muted', style: { marginLeft: '8px' } }, '主力 T1–T7 一款一级 · 城市特色同尺定级 · D 型车独立；节点按年份自动点亮')));
       el.appendChild(h('div', { class: 'mc-card mc-pad tt-wrap' }, box,
-        h('div', { class: 'note', style: { marginTop: '6px' } }, 'T1–T6 是主力车型的等级，每个等级只有一款主力车型；城市特色车型按定员、运营成本与最高时速折算到同一等级，同一等级的性能与主力车相当，可以直接横向比较。D 型车是独立的 160 km/h 支线，不参与 T 级。升级目标只取主力车型。')));
+        h('div', { class: 'note', style: { marginTop: '6px' } }, 'T1–T7 是主力车型的等级，每个等级只有一款主力车型；城市特色车型按定员、运营成本与最高时速折算到同一等级，同一等级的性能与主力车相当，可以直接横向比较。D 型车是独立的 160 km/h 支线（2030 年起有 D 型超级列车），不参与 T 级。升级目标只取主力车型。')));
     }
     // 车型一览：当年在售与以后开放的车型
     const ml = h('div', { class: 'fo-units' }), forced = F.autoUnlocked(g);

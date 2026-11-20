@@ -101,7 +101,7 @@ assert.equal(g160.fleet.trains[0].bought, bought0, '车龄不变');
 assert.ok(g160.fleet.trains[0].cost > cost0, '补差价累加到车体成本');
 assert.equal(g160.fleet.trains[2].model, 'gen-steel', '其它线路不受影响');
 assert.ok(F.upgradeD(g160, 'L1').error, '重复升级会被拒绝');
-assert.ok(spent.some(s => /列车升级/.test(s)) && logs.some(l => /D 型无人列车/.test(l.desc)), '扣费与日志已记录');
+assert.ok(spent.some(s => /列车升级/.test(s)) && logs.some(l => /改装为 D 型车/.test(l.desc)), '扣费与日志已记录');
 // 160 线的站台必须大型及以上：编译期有兜底校验
 assert.ok(CFG.metro.std160.sizeMin.indexOf('S') < 0 && CFG.metro.std160.sizeMin.indexOf('M') < 0, '小型 / 中型站不在 160 允许清单');
 assert.ok(CFG.metro.std160.sizeMin.indexOf('L') >= 0 && CFG.metro.std160.sizeMin.indexOf('XXL') >= 0, '大型 / 巨型站允许 160');

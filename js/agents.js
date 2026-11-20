@@ -305,6 +305,9 @@
     modern: { body: '#c4ccd4', band: 'line', roof: '#9aa3ad', win: '#ffffff', ends: 'square', w: 1 },
     current: { body: 'line', band: '#26303b', roof: 'line', win: '#ffffff', ends: 'round', w: 1 },
     future: { body: '#f1f4f7', band: 'line', roof: '#e3e8ee', win: '#d8f2ff', ends: 'pointed', w: 1, glow: true },
+    // v5.5 超级列车：色带取线路颜色，车体略宽；与侧视图例的 identity 保持一致（宽体 / 双层）
+    super: { body: '#f4f7fb', band: 'line', roof: '#dde6f0', win: '#d6f3ff', ends: 'pointed', w: 1.06, glow: true },
+    superD: { body: '#eef3f9', band: 'line', roof: '#cfdae7', win: '#dcf5ff', ends: 'pointed', w: 1.1, glow: true },
   };
   Agents.prototype.trainLook = function (t, R, lf) {
     const rt=t.g.rt,line=R.drawnC?.net.lines[rt.lineId]||R.game?.net.lines[rt.lineId]||rt.line||{id:rt.lineId,color:rt.color};

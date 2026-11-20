@@ -114,12 +114,12 @@ try {
     return {labels:labels,tiers:out,note:note?note.textContent:''};
   })()`);
   assert.deepEqual(tree.labels, ['主力', '支线', '160'], '科技树三行：主力 / 城市支线 / 160');
-  assert.deepEqual(tree.tiers[0].map(x => x.t), ['T1', 'T2', 'T3', 'T4', 'T5', 'T6'], '主力一行 T1–T6 一款一级');
+  assert.deepEqual(tree.tiers[0].map(x => x.t), ['T1', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'], '主力一行 T1–T7 一款一级');
   assert.ok(tree.tiers[0].every(x => /trunk/.test(x.k)), '主力节点徽标用主力样式');
-  assert.ok(tree.tiers[1].length >= 1 && tree.tiers[1].every(x => /^T[1-6]$/.test(x.t) && /city/.test(x.k)), '城市支线节点也有 T 级：' + J(tree.tiers[1]));
-  assert.deepEqual(tree.tiers[2].map(x => x.t), ['D'], '160 支线标 D，不参与 T 级');
+  assert.ok(tree.tiers[1].length >= 1 && tree.tiers[1].every(x => /^T[1-7]$/.test(x.t) && /city/.test(x.k)), '城市支线节点也有 T 级：' + J(tree.tiers[1]));
+  assert.deepEqual(tree.tiers[2].map(x => x.t), ['D', 'D'], '160 支线的两款 D 型车都标 D，不参与 T 级');
   assert.ok(tree.tiers[2].every(x => / d\b/.test(x.k)), 'D 徽标用独立样式');
-  assert.match(tree.note, /T1–T6/, '说明写明 T1–T6 分级');
+  assert.match(tree.note, /T1–T7/, '说明写明 T1–T7 分级');
   assert.match(tree.note, /D 型车是独立的 160/, '说明写明 D 型车独立');
   // 车型一览：主力 / 城市 / D 型三种徽标都要出现
   const list = await E(`(function(){
@@ -134,7 +134,7 @@ try {
   await delay(250);
   const tclip = await E(`(function(){var r=document.querySelector('.tt-wrap').getBoundingClientRect();var y=Math.max(0,Math.round(r.y-8));return {x:Math.max(0,Math.round(r.x-6)),y:y,width:Math.max(60,Math.min(Math.round(r.width+12),420)),height:Math.max(40,Math.min(Math.round(r.height+16),900-y)),scale:1};})()`);
   await shot('v50-fleet-tiers', tclip);
-  console.log('PASS 1 科技树与车型一览的 T1–T6 / D 徽标');
+  console.log('PASS 1 科技树与车型一览的 T1–T7 / D 徽标');
 
   // ---------------- 2. 自动配置只补主力 ----------------
   const auto = await E(`(function(){var b=[...document.querySelectorAll('.fo-auto')].find(function(x){return /自动配置列车/.test(x.textContent)});return b?{txt:b.textContent.replace(/\\s+/g,' ')}:null})()`);
@@ -147,7 +147,7 @@ try {
       d:F.tierLabel(F.model('gen-d160')),trunkT:F.tierLabel(F.model('gen-eco'))};})()`);
   assert.equal(api.cityPick, false, '城市特色车型不能被自动选用：' + J(api));
   assert.equal(api.trunkPick, true, '主力车型可自动选用');
-  assert.match(api.label, /^T[1-6]$/, '城市车型等级是 T 级：' + api.label);
+  assert.match(api.label, /^T[1-7]$/, '城市车型等级是 T 级：' + api.label);
   assert.match(api.trunkT, /^T[1-6]$/, '主力车型等级是 T 级');
   assert.equal(api.d, 'D', 'D 型车等级为 D');
   console.log('PASS 2 自动配置只补主力车型，城市特色车门禁生效');
@@ -211,7 +211,7 @@ try {
     var card=[...document.querySelectorAll('.fo-model')].find(function(c){return /city/i.test(c.textContent)});
     return {tiers:out,card:card?card.textContent.replace(/\\s+/g,' '):''};
   })()`);
-  assert.ok(en.tiers.every(t => /^T[1-6] (mainline|city)$|^D-type only$/.test(t)), '英文等级徽标整句翻译：' + J(en.tiers));
+  assert.ok(en.tiers.every(t => /^T[1-7] (mainline|city)$|^D-type only$/.test(t)), '英文等级徽标整句翻译：' + J(en.tiers));
   assert.ok(en.tiers.some(t => /mainline$/.test(t)), '英文主力徽标包含 mainline：' + J(en.tiers));
   assert.ok(en.tiers.some(t => /city$/.test(t)), '英文城市徽标包含 city：' + J(en.tiers));
   assert.ok(!/[\u3400-\u9fff]/.test(en.card), '英文卡片没有残留汉字：' + en.card);

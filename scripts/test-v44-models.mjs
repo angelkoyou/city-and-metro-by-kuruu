@@ -88,8 +88,8 @@ const g2d = mkG({ mapId: 'gz', y: 2012, lines: { L1: { id: 'L1', name: '1 号线
 assert.equal(F.buyList(g2d, 'L1').defaultModel.id, 'gen-d160');
 // 无人驾驶时代：只卖全自动车与 D 型车，默认值仍是主干
 const g2a = mkG({ mapId: 'gz', y: 2030 });
-assert.equal(F.buyList(g2a, 'L1').defaultModel.id, 'gen-auto');
-assert.ok(F.buyList(g2a, 'L1').list.every(m => m.id === 'gen-auto' || m.only160));
+assert.equal(F.buyList(g2a, 'L1').defaultModel.id, 'gen-super', '2030 年起默认选中 T7 超级列车');
+assert.ok(F.buyList(g2a, 'L1').list.every(m => m.id === 'gen-auto' || m.id === 'gen-super' || m.only160), '只卖当前一代主力（T6 / T7）与 160 专用车');
 // 车辆段（lid 为空）也一样不默认城市特色车
 assert.ok(!F.isCity(F.buyList(g2, null).defaultModel));
 console.log('PASS 2 新建线路与购车弹窗默认车型只取主干');
