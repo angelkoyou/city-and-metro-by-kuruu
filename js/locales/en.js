@@ -51,7 +51,7 @@
   "批量开发": "Batch development",
   "待开发 {a} 座 · 预计投入 {b}": "{a} to develop · investment {b}",
   "待开发 {a} 座 · 预计投入 {b} · 跳过 {c} 座": "{a} to develop · investment {b} · {c} skipped",
-  "只开发 10 年回本站台": "Develop only stations that pay back within 10 years",
+  "只开发 10 年回本站台": "Stations that pay back in 10 years",
   "10 年内回本 {a} 座 · 预计投入 {b} · 开发后每月净收益 {c}": "{a} stations pay back within 10 years · investment {b} · net {c} per month",
   "10 年内回本 {a} 座 · 预计投入 {b} · 开发后每月净收益 {c}（{d}）": "{a} stations pay back within 10 years · investment {b} · net {c} per month ({d})",
   "没有 10 年内回本的站台": "No station would pay back within 10 years",
@@ -8242,7 +8242,10 @@ Object.assign(window.CM.I18N_EN, {
   "{a}；未达门槛的站台只开发到各自允许的最高级。": "{a}; stations below a threshold stop at the highest level their concourse allows.",
   "{a} 座车站开发到各自可开发的最高等级（{b} 座受站厅规模限制）": "{a} stations developed to the highest level each allows ({b} held back by concourse size)",
   "。日客流约 {a} 人次。开发后每年有运营与维护成本，客流太少会亏损；第 4、5 级把范围扩到周边片区与枢纽上盖，投入与收入都更大，只有客流与换乘规模大的车站才容易回本；收入随经济周期涨落。": ". Daily traffic is about {a} trips. Operating and maintenance costs then apply every year, and stations with too little traffic lose money. Levels 4–5 extend the scheme to the surrounding district and the interchange deck: both cost and income are much larger, so only stations with heavy traffic and transfers pay back; income also swings with the economic cycle.",
-  "「一键开发所有站台」把每座站台都拉到它能开发的最高等级——{a}；「只开发 10 年回本站台」逐站从最高等级往下找，停在第一个「开发后仍盈利、且这次追加的投入能在 10 年内收回」的等级（可能是一级、二级或三级），一级都做不到就一座都不动——客流小的站台拉满，投入多半要十几年才收得回来。两个按钮都是整批一次扣费，随后逐站推进并显示进度；已达目标等级或未接入运营的自动跳过，单座失败不会中断整批。": "“Develop every station” takes each station to the highest level its concourse allows: {a}. “Develop only stations that pay back within 10 years” works down from the top level and stops at the first level that both stays in profit after development and earns back the extra investment within ten years (it may be level 1, 2 or 3); if even level 1 cannot do that, the station is left untouched — pushing a low-ridership station all the way up would take well over a decade to recover the cost. Both buttons charge the batch once, then process stations one by one with progress shown; stations already at their target level or not in service are skipped, and a single failure does not stop the batch.",
+  "「一键开发所有站台」把每座站台都拉到它能开发的最高等级——{a}；「只开发 10 年回本站台」逐站从最高等级往下找，停在第一个「开发后仍盈利、且这次追加的投入能在 10 年内收回」的等级（可能是一级、二级或三级），一级都做不到就一座都不动——客流小的站台拉满，投入多半要十几年才收得回来。": "“Develop every station” takes each station to the highest level its concourse allows: {a}. “Develop only stations that pay back within 10 years” works down from the top level and stops at the first level that both stays in profit after development and earns back the extra investment within ten years (it may be level 1, 2 or 3); if even level 1 cannot do that, the station is left untouched — pushing a low-ridership station all the way up would take well over a decade to recover the cost.",
+  "批量开发的规则": "How batch development works",
+  "整批一次扣费，随后逐站推进并显示进度；不需要开发的站台自动跳过，单座失败不影响整批。": "The whole batch is charged once, then stations are processed one by one with progress shown; stations that need no work are skipped, and a single failure does not affect the rest of the batch.",
+  "还没有投入运营的车站，暂时没有可以开发的站台": "No stations are in service yet, so there is nothing to develop right now",
   "一次开发到本站可开发的最高等级": "Develop straight to the highest level this station allows",
   "一次把所选车站开发到各自可开发的最高等级": "Develop each selected station to the highest level it allows",
 
@@ -8811,4 +8814,13 @@ Object.assign(window.CM.I18N_EN, {
   "示意图会压暗其余线路与车站，高亮方案经过的区间和车站，换乘站单独强调；切换策略立刻改高亮。": "The map dims every other line and station, highlights the segments and stations the route uses, and marks transfer stations; switching strategy updates the highlight immediately.",
   "候车时间按当前时段各交路的实际发车频率计算（同一方向的多条交路合并候车），站内换乘按 4 分钟步行计，站外换乘按实际步行距离计。": "Waiting time uses the actual frequency of each service in the current period (services running the same direction share the wait), in-station transfers count as 4 minutes of walking, and out-of-station transfers use the real walking distance.",
   "票价按全网一张票计（换乘不另收费）：常规票价按总乘距算，用到 160 轨道时与 160 票价取高，和模拟里的计费口径一致。": "The fare is one ticket for the whole trip (transfers are free): the normal fare is based on total distance, and when 160 km/h track is used the higher of that and the 160 fare applies, exactly as the simulation charges it.",
+
+  // v5.4 公告
+  "车站商业批量开发改成卡片：按钮跟着说明与投入，长规则收起来": "Station commercial batch development is now a card: each button carries its own explanation and cost",
+  "批量开发改成一张卡片：两个入口都是整宽按钮，各自下面紧跟「待开发多少座 · 预计投入多少」，不用在长段落里找哪个按钮对应哪段说明。": "Batch development is now a single card: both entries are full-width buttons, each followed by “how many stations are left · how much it will cost”, so you no longer have to match buttons to sentences in a long paragraph.",
+  "原来铺满整块的两段规则收进「批量开发的规则」：默认收起，点开才展开两种口径的完整说明。": "The two long paragraphs that filled the block now live under “How batch development works”: collapsed by default, expanding to the full explanation of both modes.",
+  "没有可开发的站台时，卡片只留一行原因（还没通车 / 已全部开发完），不再摆一排点不动的按钮。": "When there is nothing to develop, the card keeps a single line explaining why (no line open yet, or everything already at its top level) instead of showing a row of buttons that cannot be clicked.",
+  "刚开局、还没有车站接入运营时，提示改为「还没有投入运营的车站，暂时没有可以开发的站台」，不再说成「都已开发到最高等级」。": "At the start of a game with no stations in service, the hint now reads “No stations are in service yet, so there is nothing to develop right now” instead of claiming everything is already fully developed.",
+  "行为说明（整批一次扣费、逐站推进并显示进度、自动跳过、单座失败不影响整批）常驻为脚注；进度条与完成状态照旧。": "The behaviour note (charged once as a batch, processed station by station with progress, unneeded stations skipped, a single failure not affecting the rest) stays as a footnote; the progress bar and completion state are unchanged.",
+  "英文按钮改成「Stations that pay back in 10 years」，窄侧栏与英文界面都不再被裁切。": "The English button now reads “Stations that pay back in 10 years”, so it is no longer clipped in narrow sidebars or the English interface.",
 });

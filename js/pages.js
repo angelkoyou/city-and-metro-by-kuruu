@@ -1935,9 +1935,9 @@
         const prog = h('div', { class: 'tod-prog', hidden: true }, h('div', { class: 'tod-prog-bar' }, progBar), h('div', { class: 'tod-prog-txt' }, progTxt, progNote, progCost));
         const stat = h('div', { class: 'tod-batch-s tod-batch-stat' });
         const statP = h('div', { class: 'tod-batch-s tod-batch-stat' });
-        const btn = h('button', { class: 'btn sm primary', onclick: function () { run(candAll(), 'all'); } }, '一键开发所有站台');
-        const btnP = h('button', { class: 'btn sm', onclick: function () { run(candProfit(), 'profit'); } }, '只开发 10 年回本站台');
-        let running = false, seq = 0, mode = 'all';
+        const btn = h('button', { class: 'btn block primary', onclick: function () { run(candAll(), 'all'); } }, CM.icon('building', 15), '一键开发所有站台');
+        const btnP = h('button', { class: 'btn block', onclick: function () { run(candProfit(), 'profit'); } }, CM.icon('coin', 15), '只开发 10 年回本站台');
+        let running = false, seq = 0, mode = 'all', batchEl = null;
         // 待开发清单：已接入运营、且还没到本站可开发最高等级的站台（已达最高级、未接入运营的自动跳过），
         // 目标等级取各站规模允许的最高级（v3.5：巨型及以上第 5 级、超大型第 4 级、其余第 3 级）
         const candAll = function () {
@@ -1984,7 +1984,12 @@
           const skip = rows.length - all.length, total = costOf(all), totalP = costOf(prof);
           const shortAll = all.length > 0 && !fr && !g.econ.canAffordBuild(total);
           const shortP = prof.length > 0 && !fr && !g.econ.canAffordBuild(totalP);
-          stat.textContent = all.length ? ('待开发 ' + all.length + ' 座 · 预计投入 ' + U.fmtMoney(total) + (skip ? ' · 跳过 ' + skip + ' 座' : '')) : '本界面所有站台都已开发到最高等级';
+          // 没有任何可开发站台时整块收起成一行提示：一排置灰的宽按钮只会让人以为功能坏了
+          if (batchEl) batchEl.classList.toggle('idle', !all.length);
+          // 连运营中的车站都没有（刚开局、还没通车）与「已经全部开发完」是两件事，提示分开写
+          stat.textContent = all.length
+            ? ('待开发 ' + all.length + ' 座 · 预计投入 ' + U.fmtMoney(total) + (skip ? ' · 跳过 ' + skip + ' 座' : ''))
+            : (rows.length ? '本界面所有站台都已开发到最高等级' : '还没有投入运营的车站，暂时没有可以开发的站台');
           // 第二行专门说明 10 年回本那一档：数量、投入、开发后每月净收益（目标等级不统一时附等级分布）；
           // 一座都回不了本时写清原因，避免按钮无缘无故置灰
           if (!all.length) { statP.hidden = true; statP.textContent = ''; }
@@ -2069,11 +2074,18 @@
           };
           requestAnimationFrame(step);
         };
+        // 卡片结构：标题 →（整宽按钮 + 紧贴它的口径说明）×2 → 行为脚注 → 规则折叠 → 进度。
+        // 说明跟着各自的按钮走，玩家不用在长段落里找「哪个按钮是干什么的」；长规则默认收起
+        batchEl = h('div', { class: 'tod-batch' },
+          h('div', { class: 'tod-batch-h' }, h('b', null, '批量开发')),
+          btn, stat, btnP, statP,
+          h('div', { class: 'tod-batch-s tod-batch-note' }, '整批一次扣费，随后逐站推进并显示进度；不需要开发的站台自动跳过，单座失败不影响整批。'),
+          h('details', { class: 'tod-help' },
+            h('summary', null, '批量开发的规则', CM.icon('chev', 13)),
+            h('div', { class: 'tod-help-b' }, '「一键开发所有站台」把每座站台都拉到它能开发的最高等级——{a}；「只开发 10 年回本站台」逐站从最高等级往下找，停在第一个「开发后仍盈利、且这次追加的投入能在 10 年内收回」的等级（可能是一级、二级或三级），一级都做不到就一座都不动——客流小的站台拉满，投入多半要十几年才收得回来。'.replace('{a}', T.capText()))),
+          prog);
+        b.appendChild(batchEl);
         syncStat();
-        b.appendChild(h('div', { class: 'tod-batch' },
-          h('div', { class: 'tod-batch-h' }, h('b', null, '批量开发'), h('span', { class: 'grow' }), btn, btnP),
-          h('div', { class: 'tod-batch-s' }, '「一键开发所有站台」把每座站台都拉到它能开发的最高等级——{a}；「只开发 10 年回本站台」逐站从最高等级往下找，停在第一个「开发后仍盈利、且这次追加的投入能在 10 年内收回」的等级（可能是一级、二级或三级），一级都做不到就一座都不动——客流小的站台拉满，投入多半要十几年才收得回来。两个按钮都是整批一次扣费，随后逐站推进并显示进度；已达目标等级或未接入运营的自动跳过，单座失败不会中断整批。'.replace('{a}', T.capText())),
-          stat, statP, prog));
         return b;
       }, false, 'bag');
       el.appendChild(todSec);
