@@ -36,7 +36,7 @@
   }
   // 批量改字段（一键开发所有站台）：与 patchDisplay 等价，但整批只改一次撤销快照并只触发一次 touch，
   // 站台数量很多时不会因为逐站解析草案快照而卡住。
-  // patch 可以是固定对象，也可以写成 function (id) { return {...}; }——「只开发盈利站台」逐站的目标等级不同，靠后者给值
+  // patch 可以是固定对象，也可以写成 function (id) { return {...}; }——「只开发 10 年回本站台」逐站的目标等级不同，靠后者给值
   function patchDisplayMany(g, kind, ids, patch) {
     if (!ids.length) return;
     const pat = typeof patch === 'function' ? patch : function () { return patch; };
@@ -260,7 +260,17 @@
     const sd = g.model.stDaily, flow = sd && k < sd.inn.length ? sd.inn[k] + sd.out[k] + sd.xfer[k] : 0, hub = !!(C.stationLines[k] && C.stationLines[k].size >= 2);
     // month：每月收入（含经济周期）；cost：每月运营与维护成本；net：净收益（v2.5）；cap：本站规模能开发的最高等级（v3.4）
     const month = function (l) { return T.stationDaily(l, flow, hub, g.clock.y, g) * 30.4; }, cost = function (l) { return T.stationCost(l, g.clock.y, s.size, hub) * 30.4; };
-    return { s: s, lv: s.tod || 0, flow: flow, hub: hub, cap: T.maxLv(s.size), month: month, cost: cost, net: function (l) { return month(l) - cost(l); } };
+    // pay(l)：从当前等级升到 l 级的回本年数（年）＝增量投入 ÷ 年净收益增量。车站详情「约 N 年回本」、
+    // 批量开发「10 年回本」的筛选与行内说明都调这里，口径只有一套，不会出现「详情说 8 年、批量说不能开发」。
+    // 净收益不增（或本来就已在 l 级及以上）返回 Infinity：这笔投入永远收不回来
+    const pay = function (l) {
+      const lv0 = s.tod || 0;
+      if (!l || l <= lv0) return Infinity;
+      const c = Math.max(0, T.cost(l, g.clock.y, s.size, hub) - T.cost(lv0, g.clock.y, s.size, hub));
+      const gain = (month(l) - cost(l)) - (lv0 ? (month(lv0) - cost(lv0)) : 0);
+      return gain > 0 ? c / (gain * 12) : Infinity;
+    };
+    return { s: s, lv: s.tod || 0, flow: flow, hub: hub, cap: T.maxLv(s.size), month: month, cost: cost, net: function (l) { return month(l) - cost(l); }, pay: pay };
   };
   // 一次拉满到 topLv 的投入：累计投入差额，等于逐级开发差额之和（单站与批量共用）。
   // v3.5：第 4 级需超大型、第 5 级需巨型及以上车站，小站的 topLv 自动收到它能开发的最高级
@@ -288,8 +298,9 @@
     const list = h('div', { class: 'tod-levels' });
     T.LEVELS.forEach(function (L, l) {
       if (!l) return;
-      // 回本按净收益（收入 − 运营与维护成本）；升级的净收益增量对应升级投入
-      const cost = Math.max(0, T.cost(l, g.clock.y, s.size, I.hub) - T.cost(lv, g.clock.y, s.size, I.hub)), inc = I.month(l), net = I.net(l), gain = net - (lv ? I.net(lv) : 0), pay = gain > 0 ? cost / (gain * 12) : Infinity, on = l <= lv;
+      // 回本按净收益（收入 − 运营与维护成本）；升级的净收益增量对应升级投入。
+      // 年限统一走 todInfo.pay（与批量「10 年回本站台」同一口径），这里不再自己算一遍
+      const cost = Math.max(0, T.cost(l, g.clock.y, s.size, I.hub) - T.cost(lv, g.clock.y, s.size, I.hub)), inc = I.month(l), net = I.net(l), pay = I.pay(l), on = l <= lv;
       // v3.5：第 4、5 级要占用站外用地，按级要求超大型 / 巨型及以上；不够的等级照常列出投入与收益，但按钮置灰，并标出该级自己的门槛
       const locked = l > capLv;
       // 资金不足时按钮直接置灰不可按，并在该级说明里标出所需金额（自由建造模式资金不限）
@@ -1868,12 +1879,16 @@
       const netAtOf = function (id, l) { const I = self.todInfo(id); return I ? I.net(l) : null; };
       // 该站规模能开发的最高等级（v3.5：第 4 级超大型、第 5 级巨型及以上）
       const capOf = function (id) { const I = self.todInfo(id); return I ? I.cap : topLv; };
-      // 单站「仍能盈利的最高等级」：从本站可开发的最高级往下找第一个净收益 > 0 的等级；一级都赚不回来就返回 0。
-      // 商业开发的收入随等级线性增长，成本却是按累计投入的固定比例算的，所以小客流站往往二级就到顶，
-      // 硬拉满三级反而被运营与维护成本吃成亏损——批量开发不能统一按三级算
+      // 单站「10 年内能回本的最高等级」（v5.2）：从本站可开发的最高级往下找第一个同时满足
+      // ① 开发后整体不亏（net > 0，沿用 v2.9.4 的底线，避免把本来就亏的站台推得更高）
+      // ② 这次追加的投入能在 TOD.PAYBACK（10）年内收回（pay ≤ 10）
+      // 的等级；一级都做不到就返回 0，这一站一座都不动。
+      // 回本口径与车站详情「约 N 年回本」同源（todInfo.pay），批量做完后详情里每一级都确实在 10 年内回本
+      const PAYBACK = T.PAYBACK || 10;
       const bestLvOf = function (id, I) {
         const it = I || self.todInfo(id); if (!it) return 0;
-        for (let l = Math.min(topLv, it.cap || topLv); l >= 1; l--) if (it.net(l) > 0) return l;
+        const lv = it.lv || 0, top = Math.min(topLv, it.cap || topLv);
+        for (let l = top; l > lv; l--) if (it.net(l) > 0 && it.pay(l) <= PAYBACK) return l;
         return 0;
       };
       // 待开发清单的一行说明：日客流、换乘、当前等级，以及开发后的每月净收益（正负都写出来）。
@@ -1884,11 +1899,18 @@
         const head = '日客流 ' + U.fmtPeople(r.flow) + ' 人次' + (r.hub ? ' · 换乘站' : '') + (lv ? ' · ' + T.LEVELS[lv].name : '');
         if (lv >= cap) return head;
         const I = self.todInfo(r.id), best = I ? bestLvOf(r.id, I) : 0;
-        // 已经停在能赚钱的最高等级上：报当前经营状况，不再提示继续开发
+        if (!I) return head;
+        // 已经停在能回本的最高等级上：报当前经营状况，不再提示继续开发
         if (best && best <= lv) { const n = I.net(lv); return head + (n > 0 ? ' · 每月净收益约 ' + U.fmtMoney(n) : ' · 每月净亏约 ' + U.fmtMoney(-n)); }
-        const n = I ? I.net(best || cap) : 0;
-        // 「开发后（第 2 级）」：目标不是最高级时把等级写进括号，避免把「开发后」误读成一定拉满
-        return head + ' · 开发后' + (best && best < cap ? '（第 ' + best + ' 级）' : ' ') + (n > 0 ? '+' : '−') + U.fmtMoney(Math.abs(n)) + '/月';
+        // 再往上开发都不满足「10 年回本」：写清原因，别让玩家以为是按钮坏了
+        if (!best) {
+          const n = I.net(cap);
+          return head + ' · 按目前客流，开发到任何等级都难在 {v0} 年内回本'.replace('{v0}', PAYBACK) + (n > 0 ? '（满级每月净收益约 ' + U.fmtMoney(n) + '）' : '');
+        }
+        const n = I.net(best), pay = I.pay(best);
+        // 「开发后（第 2 级）」：目标不是最高级时把等级写进括号，避免把「开发后」误读成一定拉满；
+        // 回本年数直接取详情页同一口径，两个界面不会各说各的
+        return head + ' · 开发后' + (best < cap ? '（第 ' + best + ' 级）' : ' ') + (n > 0 ? '+' : '−') + U.fmtMoney(Math.abs(n)) + '/月' + (isFinite(pay) ? ' · 约 ' + U.fmtNum(pay, pay < 10 ? 1 : 0) + ' 年回本' : '');
       };
       const todSec = this.sec('fi-tod', '车站商业（TOD）', dev.length ? dev.length + ' 站 · 每月净' + (sum < 0 ? '亏 ' : '收 ') + U.fmtMoney(Math.abs(sum)) : '尚未开发', function () {
         const b = h('div');
@@ -1904,17 +1926,17 @@
           rowUI.push({ r: r, info: info, btn: rb });
           b.appendChild(h('div', { class: 'tod-row' }, h('span', { class: 'grow' }, h('b', null, r.name), info), rb));
         }
-        // ---------- 批量开发（v2.7；v2.9.3 增加「只开发盈利站台」；v2.9.4 逐站选可盈利等级） ----------
+        // ---------- 批量开发（v2.7；v2.9.3 增加盈利口径；v2.9.4 逐站定级；v5.2 改为「10 年回本」） ----------
         // 整批一次扣费（资金不够就一座都不动），随后分片推进并显示进度；单站异常不中断整批，结束后回报失败站台；
         // 面板关闭或读档时 token 失效，立刻停止推进，已完成的站台照常留在存档里。
-        // 两个入口共用同一条管线，只有候选清单不同：全部站台（统一拉满）/ 各自能盈利的最高等级（判定见 bestLvOf）。
+        // 两个入口共用同一条管线，只有候选清单不同：全部站台（统一拉满）/ 各自 10 年内能回本的最高等级（判定见 bestLvOf）。
         // 清单项的 tlv 就是该站的目标等级：扣费、写入、进度、结算全部照它走，两个入口因此共用同一段代码
         const progBar = h('i'), progTxt = h('b', { class: 'num' }), progNote = h('span', { class: 'small' }), progCost = h('span', { class: 'small muted' });
         const prog = h('div', { class: 'tod-prog', hidden: true }, h('div', { class: 'tod-prog-bar' }, progBar), h('div', { class: 'tod-prog-txt' }, progTxt, progNote, progCost));
         const stat = h('div', { class: 'tod-batch-s tod-batch-stat' });
         const statP = h('div', { class: 'tod-batch-s tod-batch-stat' });
         const btn = h('button', { class: 'btn sm primary', onclick: function () { run(candAll(), 'all'); } }, '一键开发所有站台');
-        const btnP = h('button', { class: 'btn sm', onclick: function () { run(candProfit(), 'profit'); } }, '只开发盈利站台');
+        const btnP = h('button', { class: 'btn sm', onclick: function () { run(candProfit(), 'profit'); } }, '只开发 10 年回本站台');
         let running = false, seq = 0, mode = 'all';
         // 待开发清单：已接入运营、且还没到本站可开发最高等级的站台（已达最高级、未接入运营的自动跳过），
         // 目标等级取各站规模允许的最高级（v3.5：巨型及以上第 5 级、超大型第 4 级、其余第 3 级）
@@ -1928,9 +1950,9 @@
           }
           return out;
         };
-        // 盈利候选：逐站取「还能赚钱的最高等级」，而不是统一拉满——一级就亏的站台一座都不动，
-        // 已经到（或超过）该等级的也跳过，免得花冤枉钱把「二级就赚」的站台推成三级亏损。
-        // 判定与车站详情、亏损清单一套数据，所以做完之后折叠标题里的每月净收益只会变好
+        // 回本候选：逐站取「10 年内能回本的最高等级」，而不是统一拉满——一级都回不了本的站台一座都不动，
+        // 已经到（或超过）该等级的也跳过，免得花冤枉钱把「刚够回本」的站台推到 15 年才回本的更高一级。
+        // 判定与车站详情、亏损清单一套数据（todInfo.pay），所以做完之后折叠标题里的每月净收益只会变好
         const candProfit = function () {
           const out = [];
           for (const r of candAll()) {
@@ -1963,32 +1985,32 @@
           const shortAll = all.length > 0 && !fr && !g.econ.canAffordBuild(total);
           const shortP = prof.length > 0 && !fr && !g.econ.canAffordBuild(totalP);
           stat.textContent = all.length ? ('待开发 ' + all.length + ' 座 · 预计投入 ' + U.fmtMoney(total) + (skip ? ' · 跳过 ' + skip + ' 座' : '')) : '本界面所有站台都已开发到最高等级';
-          // 第二行专门说明盈利那一档：数量、投入、开发后每月净收益（目标等级不统一时附等级分布）；
-          // 一座都盈利不了时写清原因，避免按钮无缘无故置灰
+          // 第二行专门说明 10 年回本那一档：数量、投入、开发后每月净收益（目标等级不统一时附等级分布）；
+          // 一座都回不了本时写清原因，避免按钮无缘无故置灰
           if (!all.length) { statP.hidden = true; statP.textContent = ''; }
           else {
             statP.hidden = false;
             const mix = prof.length ? lvMixOf(prof) : '';
             statP.textContent = prof.length
-              ? ('开发后仍盈利 ' + prof.length + ' 座 · 预计投入 ' + U.fmtMoney(totalP) + ' · 开发后每月净收益 ' + U.fmtMoney(netSumOf(prof)) + (mix ? '（' + mix + '）' : ''))
-              : '没有开发后仍盈利的站台：按本月客流与经济周期，这些站台开发到任何等级的收入都不够覆盖运营与维护成本';
+              ? ('10 年内回本 ' + prof.length + ' 座 · 预计投入 ' + U.fmtMoney(totalP) + ' · 开发后每月净收益 ' + U.fmtMoney(netSumOf(prof)) + (mix ? '（' + mix + '）' : ''))
+              : '没有 10 年内回本的站台：按本月客流与经济周期，这些站台开发到任何等级，新增投入都收不回来';
           }
           btn.disabled = running || !all.length || shortAll;
           btnP.disabled = running || !prof.length || shortP;
           if (running) { btn.setAttribute('data-tip', '正在开发，请稍候'); btnP.setAttribute('data-tip', '正在开发，请稍候'); return; }
           if (shortAll) btn.setAttribute('data-tip', '资金不足：需要 ' + U.fmtMoney(total)); else btn.removeAttribute('data-tip');
-          if (!prof.length) btnP.setAttribute('data-tip', '没有开发后仍盈利的站台');
+          if (!prof.length) btnP.setAttribute('data-tip', '没有 10 年内回本的站台');
           else if (shortP) btnP.setAttribute('data-tip', '资金不足：需要 ' + U.fmtMoney(totalP));
           else btnP.removeAttribute('data-tip');
         };
         const finish = function (list, done, fail, cost) {
           running = false;
-          const title = mode === 'profit' ? '车站商业开发：只开发盈利站台' : '车站商业开发：一键开发所有站台';
-          // 盈利口径下每座站台的目标等级不同：说明写成「可盈利的最高等级」并附等级分布；
+          const title = mode === 'profit' ? '车站商业开发：只开发 10 年回本站台' : '车站商业开发：一键开发所有站台';
+          // 10 年回本口径下每座站台的目标等级不同：说明写成「10 年内回本的最高等级」并附等级分布；
           // 统一拉满时仍写等级名，但有小站受规模限制（v3.4 第 4、5 级需超大型及以上）时改写成「各自可开发的最高等级」
           const mix = mode === 'profit' ? lvMixOf(list) : '';
           const capped = list.some(function (r) { return r.tlv < topLv; });
-          const lvTxt = mode === 'profit' ? '可盈利的最高等级' : (capped ? '各自可开发的最高等级' : topName);
+          const lvTxt = mode === 'profit' ? '10 年内回本的最高等级' : (capped ? '各自可开发的最高等级' : topName);
           if (done) {
             if (self.R) self.R._smC = null;
             g.logEvent({ tag: '经营', title: title, desc: done + ' 座站台开发到' + lvTxt + (mix ? '（' + mix + '）' : '') + (cost > 0 ? '，投入 ' + U.fmtMoney(cost) : '') + (fail.length ? '；' + fail.length + ' 座失败' : '') });
@@ -2000,7 +2022,7 @@
           progNote.textContent = fail.length ? '· ' + fail.length + ' 座失败：' + fail.slice(0, 3).join('、') + (fail.length > 3 ? ' 等' : '') + '（可单独重试）' : '';
           progNote.className = 'small' + (fail.length ? ' bad' : '');
           progCost.textContent = cost > 0 ? '· 投入 ' + U.fmtMoney(cost) : '';
-          self.toast(done + ' 座站台已开发到' + lvTxt + (mode === 'profit' ? '（只开发盈利站台）' : '') + (fail.length ? '，' + fail.length + ' 座失败，可单独重试' : ''), fail.length ? 'warn' : 'good');
+          self.toast(done + ' 座站台已开发到' + lvTxt + (mode === 'profit' ? '（只开发 10 年回本站台）' : '') + (fail.length ? '，' + fail.length + ' 座失败，可单独重试' : ''), fail.length ? 'warn' : 'good');
           // 不重开面板，直接更新折叠标题里的每月净收益与待开发清单
           const s = sumNow(), sumEl = todSec.querySelector('.sec-h .sum');
           if (sumEl) sumEl.textContent = s.n ? (s.n + ' 站 · 每月净' + (s.v < 0 ? '亏 ' : '收 ') + U.fmtMoney(Math.abs(s.v))) : '尚未开发';
@@ -2016,18 +2038,18 @@
         const run = function (list, tag) {
           if (running) return;
           // 提交前重新取一次清单与总价：面板可能是几分钟前打开的，资金与开发等级都可能已经变了
-          if (!list.length) { self.toast(tag === 'profit' ? '没有开发后仍盈利的站台' : '本界面所有站台都已开发到最高等级', 'warn'); return; }
+          if (!list.length) { self.toast(tag === 'profit' ? '没有 10 年内回本的站台' : '本界面所有站台都已开发到最高等级', 'warn'); return; }
           const total = costOf(list);
           if (!g.econ.isFree() && !g.econ.canAffordBuild(total)) { self.toast('资金不足：需要 ' + U.fmtMoney(total) + '，整批不开发', 'bad'); syncStat(); return; }
           running = true; mode = tag; syncStat();
-          if (total > 0) g.econ.spendBuild({ construction: total }, (tag === 'profit' ? '车站商业开发：只开发盈利 ' : '车站商业开发：一键开发 ') + list.length + ' 座站台', { y: g.clock.y, m: g.clock.m, d: g.clock.d }, true);
+          if (total > 0) g.econ.spendBuild({ construction: total }, (tag === 'profit' ? '车站商业开发：10 年回本 ' : '车站商业开发：一键开发 ') + list.length + ' 座站台', { y: g.clock.y, m: g.clock.m, d: g.clock.d }, true);
           const token = ++seq;
           let i = 0, done = 0; const fail = [];
           prog.hidden = false; prog.classList.remove('done'); progNote.textContent = ''; progCost.textContent = '';
           const paint = function (r) {
             progBar.style.width = (list.length ? Math.round(i / list.length * 100) : 0) + '%';
             progTxt.textContent = '正在开发 ' + i + ' / ' + list.length + ' 座';
-            // 盈利口径逐站目标等级不同，进度行里顺带报出这一站做到几级
+            // 10 年回本口径逐站目标等级不同，进度行里顺带报出这一站做到几级
             progNote.textContent = r ? '· ' + r.name + (mode === 'profit' ? ' → 第 ' + r.tlv + ' 级' : '') : '';
           };
           paint(list[0]);
@@ -2050,7 +2072,7 @@
         syncStat();
         b.appendChild(h('div', { class: 'tod-batch' },
           h('div', { class: 'tod-batch-h' }, h('b', null, '批量开发'), h('span', { class: 'grow' }), btn, btnP),
-          h('div', { class: 'tod-batch-s' }, '「一键开发所有站台」把每座站台都拉到它能开发的最高等级——{a}；「只开发盈利站台」逐站找出仍能盈利的最高等级（可能是一级、二级或三级），只开发到那一级——客流小的站台拉满反而会被运营与维护成本拖成亏损。两个按钮都是整批一次扣费，随后逐站推进并显示进度；已达目标等级或未接入运营的自动跳过，单座失败不会中断整批。'.replace('{a}', T.capText())),
+          h('div', { class: 'tod-batch-s' }, '「一键开发所有站台」把每座站台都拉到它能开发的最高等级——{a}；「只开发 10 年回本站台」逐站从最高等级往下找，停在第一个「开发后仍盈利、且这次追加的投入能在 10 年内收回」的等级（可能是一级、二级或三级），一级都做不到就一座都不动——客流小的站台拉满，投入多半要十几年才收得回来。两个按钮都是整批一次扣费，随后逐站推进并显示进度；已达目标等级或未接入运营的自动跳过，单座失败不会中断整批。'.replace('{a}', T.capText())),
           stat, statP, prog));
         return b;
       }, false, 'bag');

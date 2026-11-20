@@ -257,9 +257,9 @@ try {
   assert.equal(await E('document.querySelector(".tod-batch .btn").disabled'), true, '全部开发完成后按钮置灰');
   assert.equal(await E('CM.game.econ.funds'), after.funds, '不会重复扣费');
 
-  // ---------------- 只开发盈利站台（v2.9.3；v2.9.4 逐站选可盈利等级） ----------------
+  // ---------------- 只开发 10 年回本站台（v2.9.3 盈利口径；v2.9.4 逐站定级；v5.2 改为 10 年回本） ----------------
   // 复位成「全部未开发 + 资金充足」，把客流最小的一座站台的客流清零：收入归零、维护成本照旧，
-  // 开发到任何等级都亏钱，用它验证筛选是真的在按净收益过滤，而不是换个名字又全开发一遍。
+  // 开发到任何等级都不回本，用它验证筛选是真的在按 10 年回本过滤，而不是换个名字又全开发一遍。
   await E('CM.game.econ.funds=8e9;Object.values(CM.game.net.stations).forEach(s=>s.tod=0);CM.ui.rerenderPage();true');
   await until('!!document.querySelector(".tod-batch")');
   const starved = await E(`(()=>{
@@ -270,23 +270,24 @@ try {
     return {id:best.id,name:g.net.stations[best.id].name};
   })()`);
   await until('!!document.querySelector(".tod-batch")');
-  // 期望：每座站台都做到「自己还能赚钱的最高等级」，一级都不赚的一座都不动
+  // 期望：每座站台都做到「自己 10 年内能回本的最高等级」，一级都回不了本的一座都不动
   const plan = await E(`(()=>{
-    const g=CM.game,top=CM.TOD.LEVELS.length-1;
-    const best=id=>{const I=CM.ui.todInfo(id);if(!I)return 0;for(let l=top;l>=1;l--)if(I.net(l)>0)return l;return 0;};
-    const cand=Object.values(g.net.stations).filter(s=>{const I=CM.ui.todInfo(s.id);return I&&(s.tod||0)<top;});
-    const exp=cand.filter(s=>best(s.id)>0).map(s=>({id:s.id,lv:best(s.id)}));
+    const g=CM.game,top=CM.TOD.LEVELS.length-1,Y=CM.TOD.PAYBACK;
+    const best=id=>{const I=CM.ui.todInfo(id);if(!I)return 0;const cap=Math.min(top,I.cap||top);for(let l=cap;l>I.lv;l--)if(I.net(l)>0&&I.pay(l)<=Y)return l;return 0;};
+    const cand=Object.values(g.net.stations).filter(s=>{const I=CM.ui.todInfo(s.id);return I&&(s.tod||0)<Math.min(top,I.cap||top);});
+    const exp=cand.filter(s=>best(s.id)>0).map(s=>{const I=CM.ui.todInfo(s.id),l=best(s.id);return {id:s.id,lv:l,pay:l?I.pay(l):Infinity};});
     const none=cand.filter(s=>best(s.id)===0).map(s=>s.id);
     const btns=[...document.querySelectorAll(".tod-batch .btn")];
     return {exp:exp,none:none,btns:btns.map(x=>x.textContent),
       stat2:document.querySelectorAll(".tod-batch .tod-batch-stat")[1].textContent};
   })()`);
   assert.equal(plan.btns.length, 2, '批量开发里应有两个入口：' + JSON.stringify(plan.btns));
-  assert.equal(plan.btns[1], '只开发盈利站台');
-  assert.ok(plan.exp.length >= 1, '场景里应有能开发到盈利等级的站台');
-  assert.ok(plan.none.indexOf(starved.id) >= 0, '被抽走客流的站台任何等级都亏，应被排除：' + starved.name);
-  assert.match(plan.stat2, /开发后仍盈利 \d+ 座 · 预计投入 .+ · 开发后每月净收益/, '要报出盈利站台数、投入与每月净收益');
-  assert.ok(plan.stat2.indexOf('开发后仍盈利 ' + plan.exp.length + ' 座') === 0, '报出的座数要等于逐站可盈利的站台数：' + plan.stat2);
+  assert.equal(plan.btns[1], '只开发 10 年回本站台');
+  assert.ok(plan.exp.length >= 1, '场景里应有能开发到 10 年回本等级的站台');
+  assert.ok(plan.exp.every(e => e.pay <= 10), '每座站台的目标等级都要在 10 年内回本：' + JSON.stringify(plan.exp));
+  assert.ok(plan.none.indexOf(starved.id) >= 0, '被抽走客流的站台任何等级都回不了本，应被排除：' + starved.name);
+  assert.match(plan.stat2, /10 年内回本 \d+ 座 · 预计投入 .+ · 开发后每月净收益/, '要报出回本站台数、投入与每月净收益');
+  assert.ok(plan.stat2.indexOf('10 年内回本 ' + plan.exp.length + ' 座') === 0, '报出的座数要等于逐站能回本的站台数：' + plan.stat2);
 
   const fundsP = await E('CM.game.econ.funds');
   await E('document.querySelectorAll(".tod-batch .btn")[1].click();true');
@@ -302,36 +303,43 @@ try {
       toast:[...document.querySelectorAll(".toast")].map(t=>t.textContent).join("|"),
       txt:document.querySelector(".tod-prog-txt").textContent};
   })()`);
-  assert.equal(resP.got.join(','), resP.want.join(','), '每座站台都开发到它能盈利的最高等级：期望 ' + JSON.stringify(resP.want) + '，实际 ' + JSON.stringify(resP.got));
+  assert.equal(resP.got.join(','), resP.want.join(','), '每座站台都开发到它能 10 年回本的最高等级：期望 ' + JSON.stringify(resP.want) + '，实际 ' + JSON.stringify(resP.got));
   assert.ok(resP.net.every(v => v > 0), '开发后的站台都处于盈利状态：' + JSON.stringify(resP.net));
-  assert.ok(resP.none.every(v => v === 0), '任何等级都不盈利的站台一座都不应被动过：' + JSON.stringify(resP.none));
-  assert.match(resP.log, /只开发盈利站台/, '日志标题要与入口一致');
-  assert.match(resP.toast, /只开发盈利站台/, '提示要说明是盈利口径');
+  assert.ok(resP.none.every(v => v === 0), '任何等级都回不了本的站台一座都不应被动过：' + JSON.stringify(resP.none));
+  assert.match(resP.log, /只开发 10 年回本站台/, '日志标题要与入口一致');
+  assert.match(resP.toast, /只开发 10 年回本站台/, '提示要说明是 10 年回本口径');
   assert.match(resP.txt, /^已完成 \d+ \/ \d+ 座/);
-  assert.ok(fundsP - resP.funds > 0, '只开发盈利站台同样整批扣费一次');
+  assert.ok(fundsP - resP.funds > 0, '只开发 10 年回本站台同样整批扣费一次');
 
-  // 逐站定级的关键场景：某站「第 2 级能赚、第 3 级就亏」，旧逻辑会把它拉满成亏损，新逻辑应停在 2 级
+  // 逐站定级的关键场景：某站「第 2 级 10 年内能回本、第 3 级回不了」，旧逻辑会把它拉满，新逻辑应停在 2 级。
+  // pay 随客流单调递减（收入与客流成正比，120k 之后才饱和），先二分出最高级「10 年刚好回本」的临界客流，
+  // 再取它的 90%：最高级回本超过 10 年，二级因为累计投入低得多仍稳稳在 10 年内。
   await E('CM.game.econ.funds=8e9;Object.values(CM.game.net.stations).forEach(s=>s.tod=0);CM.ui.rerenderPage();true');
   await until('!!document.querySelector(".tod-batch")');
   const tuned = await E(`(()=>{
-    const g=CM.game,C=g.model.net.C,sd=g.model.stDaily,T=CM.TOD,top=T.LEVELS.length-1;
-    const net=(I,l,f)=>T.stationDaily(l,f,I.hub,g.clock.y,g)*30.4-T.stationCost(l,g.clock.y,I.s.size,I.hub)*30.4;
+    const g=CM.game,C=g.model.net.C,sd=g.model.stDaily,T=CM.TOD,top=T.LEVELS.length-1,Y=T.PAYBACK;
+    const trial=(id,k,f)=>{sd.inn[k]=f;sd.out[k]=0;sd.xfer[k]=0;const I=CM.ui.todInfo(id);if(!I)return null;return {p2:I.pay(2),p3:I.pay(3),n2:I.net(2),n3:I.net(3)};};
+    const diag=[];
     for(const cs of C.stations){
       const st=g.net.stations[cs.id];if(!st)continue;
       const k=C.sIndex.get(cs.id),I=CM.ui.todInfo(cs.id);if(!I||k===undefined)continue;
       if(I.flow<=0)continue;
-      // 二分出第 3 级刚好打平的客流，取其 80%：三级转为亏损、二级仍在赚钱
-      let lo=1,hi=200000;
-      for(let it=0;it<40;it++){const mid=(lo+hi)/2;if(net(I,top,mid)>0)hi=mid;else lo=mid;}
-      const f=hi*0.8;
-      if(net(I,1,f)<=0||net(I,2,f)<=0||net(I,top,f)>0)continue;
+      // 只要站台能开发到第 3 级：第 4、5 级的投入产出比更低（门槛客流分别是第 3 级的 1.37 / 1.57 倍），
+      // 第 3 级回不了本时它们同样回不了本，所以不必限制 cap 正好是 3
+      if((I.cap||top)<3){diag.push({id:cs.id,skip:'cap='+I.cap});continue;}
+      const keep={i:sd.inn[k],o:sd.out[k],x:sd.xfer[k]};
+      // 二分：p3 <= Y 时 hi=mid，否则 lo=mid；恒不回本时 lo 会顶到上界，取 90% 仍是「三级不回本」
+      let lo=1,hi=400000;
+      for(let it=0;it<50;it++){const mid=(lo+hi)/2,r=trial(cs.id,k,mid);if(r&&r.p3<=Y)hi=mid;else lo=mid;}
+      const f=Math.max(1,Math.round(hi*0.9)),r=trial(cs.id,k,f);
+      if(!r||!(r.n2>0&&r.p2<=Y&&r.p3>Y)){diag.push({id:cs.id,cap:I.cap,hi:hi,f:f,p2:r&&r.p2,p3:r&&r.p3,n2:r&&r.n2,n3:r&&r.n3});sd.inn[k]=keep.i;sd.out[k]=keep.o;sd.xfer[k]=keep.x;continue;}
       sd.inn[k]=f;sd.out[k]=0;sd.xfer[k]=0;CM.ui.rerenderPage();
-      return {id:cs.id,name:st.name,f:Math.round(f),net2:net(I,2,f),net3:net(I,top,f)};
+      return {id:cs.id,name:st.name,f:Math.round(f),cap:I.cap,p2:r.p2,p3:r.p3,net2:r.n2,net3:r.n3};
     }
-    return null;
+    return {none:true,diag:diag.slice(0,8)};
   })()`);
-  assert.ok(tuned, '应能造出「第 2 级盈利、第 3 级亏损」的站台');
-  assert.ok(tuned.net2 > 0 && tuned.net3 <= 0, '造出的站台应二级盈利、三级亏损：' + JSON.stringify(tuned));
+  assert.ok(tuned && tuned.id, '应能造出「第 2 级 10 年回本、第 3 级回不了本」的站台：' + JSON.stringify(tuned));
+  assert.ok(tuned.net2 > 0 && tuned.p2 <= 10 && tuned.p3 > 10, '造出的站台应二级 10 年内回本、三级回不了本：' + JSON.stringify(tuned));
   await until('!!document.querySelector(".tod-batch")');
   const cappedPlan = await E('document.querySelectorAll(".tod-batch .tod-batch-stat")[1].textContent');
   assert.match(cappedPlan, /第 2 级：\d+ 座/, '统计行要报出目标等级分布：' + cappedPlan);
@@ -341,7 +349,7 @@ try {
     const g=CM.game,id=${JSON.stringify(tuned.id)},lv=(g.net.stations[id]||{}).tod||0,I=CM.ui.todInfo(id);
     return {lv:lv,net:I?I.net(lv):0};
   })()`);
-  assert.equal(capped.lv, 2, '只开发到仍能盈利的第 2 级，不会被拉满成亏损：' + tuned.name);
+  assert.equal(capped.lv, 2, '只开发到 10 年内能回本的第 2 级，不会被拉满：' + tuned.name);
   assert.ok(capped.net > 0, '停在第 2 级时仍是盈利状态');
 
   // 全部站台开发后都亏：按钮置灰、写清原因；即使强行触发也不会扣钱
@@ -351,14 +359,14 @@ try {
   await until('!!document.querySelector(".tod-batch")');
   const dead = await E(`(()=>{const b=[...document.querySelectorAll(".tod-batch .btn")][1];
     return {dis:b.disabled,tip:b.getAttribute("data-tip")||"",stat2:document.querySelectorAll(".tod-batch .tod-batch-stat")[1].textContent}})()`);
-  assert.equal(dead.dis, true, '没有开发后盈利的站台时按钮应置灰');
-  assert.match(dead.tip, /没有开发后仍盈利的站台/, '置灰时要说明原因');
-  assert.match(dead.stat2, /没有开发后仍盈利的站台/, '统计行要写清为什么不给开发');
+  assert.equal(dead.dis, true, '没有 10 年内回本的站台时按钮应置灰');
+  assert.match(dead.tip, /没有 10 年内回本的站台/, '置灰时要说明原因');
+  assert.match(dead.stat2, /没有 10 年内回本的站台/, '统计行要写清为什么不给开发');
   const fundsD = await E('CM.game.econ.funds');
   await E('(()=>{const b=[...document.querySelectorAll(".tod-batch .btn")][1];b.disabled=false;b.click();return true})()');
   await delay(400);
   assert.equal(await E('CM.game.econ.funds'), fundsD, '没有候选时不扣费');
-  console.log('PASS 只开发盈利站台');
+  console.log('PASS 只开发 10 年回本站台');
   assert.equal(errors.length, 0, 'Browser errors:\n' + errors.join('\n'));
   console.log('PASS 一键开发所有站台');
 } finally {

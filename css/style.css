@@ -3929,3 +3929,7 @@ body.ops-open #feed > :not(#toasts) { display: none; }
 .tt-tier.d { border-style: dashed; }
 .tt-node.sale .tt-tier.trunk { color: var(--good); border-color: color-mix(in srgb, var(--good) 45%, transparent); }
 .tt-node.on .tt-tier { color: var(--accent); border-color: var(--accent); background: var(--accent-soft); }
+
+/* v5.2 车站商业批量开发：「只开发 10 年回本站台」比旧入口多两个词，英文更长。
+   窄侧栏里按钮允许在卡片内换行，不要把整块撑出横向滚动（.btn 默认 nowrap） */
+.tod-batch .tod-batch-h .btn { max-width: 100%; white-space: normal; text-align: center; line-height: 1.35; }
