@@ -1,28 +1,27 @@
-# 城市與地鐵
+# 城市與地鐵 · 社群修改版
 
 [简体中文](./README.md) · **繁體中文** · [English](./README.en.md)
+
+> **本儲存庫是社群修改版，不是官方版本。** 基於 [VinsonFung/city-and-metro](https://github.com/VinsonFung/city-and-metro) 修改；
+> 原作者 [VinsonFung](https://github.com/VinsonFung) · 原版網站 [city-and-metro.pages.dev](https://city-and-metro.pages.dev)。
+> 本分支在上下游基線 v2.5.1 之上繼續開發到 **v5.5**（T1–T7 車型分級、超級列車、地鐵導航、車站商業改造等），
+> 改動清單見[本社群版新增](./README.md#本社区版新增v41--v55)。遵循[非商業許可](./LICENSE.txt)，**嚴禁商業使用**。
 
 **在真實城市裡，畫出你自己的地鐵。**
 
 《城市與地鐵》是一款在瀏覽器中遊玩的單人地鐵規劃與城市經營遊戲。從第一座車站開始，連接住宅區、商圈、校園與機場，跨過江河，逐步織出自己的交通網路。城市隨年代發展，居民也會根據你的路網重新選擇出行方式。
 
-**[線上遊玩](https://city-and-metro.pages.dev)** · [原始碼儲存庫](https://github.com/VinsonFung/city-and-metro) · [使用許可](./LICENSE.txt)
+**[線上遊玩](https://angelkoyou.github.io/city-and-metro-by-kuruu/)** · [本儲存庫](https://github.com/angelkoyou/city-and-metro-by-kuruu) · [原版網站](https://city-and-metro.pages.dev) · [使用許可](./LICENSE.txt)
 
-目前網頁版 **v2.5.1** 加入政府合約、商業盈虧、車隊與調度、運行速度與交路，以及「地鐵芯」路網管理系統；同步複合任務、建設平衡、分析工具、教學、聲音、三語和效能修正。世界地圖選城與城市轉場保留為獨立版專屬功能。
+上游基線為 **v2.5.1**：政府合約、商業盈虧、車隊與調度、運行速度與交路，以及「地鐵芯」路網管理系統；同步複合任務、建設平衡、分析工具、教學、聲音、三語和效能修正。世界地圖選城與城市轉場保留為獨立版專屬功能。本社群版在此基礎上繼續開發到 **v5.5**。
 
 ## 維護與社群版本
 
-本儲存庫會由原作者 **VinsonFung** 持續維護和更新，**請不要向本儲存庫提交 Pull Request（PR）**。
-
-歡迎在遵守非商業許可的前提下製作社群改版，並自行部署至自己的網站。發布時，請在網站醒目位置標註這是社群修改版，並保留以下署名與連結：
-
-- 原作者：[VinsonFung](https://github.com/VinsonFung)
-- 本遊戲網站：[城市與地鐵](https://city-and-metro.pages.dev)
-- 原始儲存庫：[VinsonFung/city-and-metro](https://github.com/VinsonFung/city-and-metro)
+- **本儲存庫**：社群修改版，由 [angelkoyou](https://github.com/angelkoyou) 維護。問題與建議請開 [Issue](https://github.com/angelkoyou/city-and-metro-by-kuruu/issues)，歡迎 PR。
+- **上游原版**：由原作者 [VinsonFung](https://github.com/VinsonFung) 維護，原版網站見 [city-and-metro.pages.dev](https://city-and-metro.pages.dev)。上游儲存庫不接受 PR，原版相關問題請到原儲存庫回報。
+- **署名**：本社群版完整保留原作者署名、授權條款與第三方聲明；在本版基礎上再發布時，請一併保留並註明你的進一步修改。
 
 **原版及社群改版均嚴禁商業使用。** 不得收費遊玩、販售、投放廣告、接受商業贊助或用於其他商業變現；免費發布、修改或改名不構成例外。請保留原有授權條款、版權和第三方署名，清楚說明自己的修改，不要冒充官方版本。
-
-後續會在本遊戲網站中彙整並整合大家的社群版連結，方便玩家發現和體驗不同版本。謝謝理解與配合。
 
 ## 你可以做什麼
 
@@ -93,7 +92,7 @@
 
 ## 執行與存檔
 
-開啟[遊戲網站](https://city-and-metro.pages.dev)即可遊玩。也可以下載本儲存庫，在桌面版 Chrome、Edge 或 Firefox 中開啟 `index.html`，無需安裝相依套件或建置。
+開啟[線上版](https://angelkoyou.github.io/city-and-metro-by-kuruu/)即可遊玩。也可以下載本儲存庫，在桌面版 Chrome、Edge 或 Firefox 中開啟 `index.html`，無需安裝相依套件或建置。
 
 進度和設定儲存在目前瀏覽器，無需帳號。支援自動儲存、手動儲存、存檔重新命名，以及 JSON 匯入匯出。更換電腦、瀏覽器或網址前，請先匯出備份。未確認的建設草案不會儲存。
 
@@ -118,6 +117,7 @@
 
 ## 版權與許可
 
-**Copyright © 2026 VinsonFung。保留所有權利，嚴禁商業使用。**
+原始作品 **Copyright © 2026 VinsonFung。保留所有權利，嚴禁商業使用。**
+本社群版自 v4.1 起的修改由 **angelkoyou** 完成，同樣以非商業許可發布，不改變原始作品的版權歸屬。
 
 非商業學習、研究、遊玩、修改及分享須遵守 [LICENSE.txt](./LICENSE.txt)。第三方程式碼、資料與資源保留各自授權條款；OpenStreetMap 地理資料遵循 ODbL 1.0，詳見[第三方聲明](./THIRD_PARTY_NOTICES.txt)。

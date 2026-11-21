@@ -1,28 +1,24 @@
-# City & Metro
+# City & Metro · Community Edition
 
 [简体中文](./README.md) · [繁體中文](./README.zh-TW.md) · **English**
+
+> **This repository is a community-modified fork, not an official release.** It is based on [VinsonFung/city-and-metro](https://github.com/VinsonFung/city-and-metro); original author [VinsonFung](https://github.com/VinsonFung), official site [city-and-metro.pages.dev](https://city-and-metro.pages.dev). This branch continues past the upstream v2.5.1 baseline up to **v5.5** (T1–T7 train classes, super trains, metro navigation, station-commercial rework). Non-commercial use only — see [LICENSE.txt](./LICENSE.txt).
 
 **Draw your own metro through real cities.**
 
 City & Metro is a single-player metro planning and city management game for your browser. Start with one station, connect homes, business districts, campuses, and airports, cross rivers, and build a network of your own. Cities develop over time, and residents reconsider how they travel as your network grows.
 
-**[Play online](https://city-and-metro.pages.dev)** · [Source repository](https://github.com/VinsonFung/city-and-metro) · [License](./LICENSE.txt)
+**[Play online](https://angelkoyou.github.io/city-and-metro-by-kuruu/)** · [This repository](https://github.com/angelkoyou/city-and-metro-by-kuruu) · [Official site](https://city-and-metro.pages.dev) · [License](./LICENSE.txt)
 
-The web edition **v2.5.1** adds government contracts, commercial profit and loss, fleet purchases and dispatch, line speeds and services, and the Metro Core management system. It also brings compound tasks, construction balancing, analysis tools, tutorial, sound, three-language and performance updates. World-map city selection and city transitions remain exclusive to the standalone edition.
+The upstream baseline is **v2.5.1**: government contracts, commercial profit and loss, fleet purchases and dispatch, line speeds and services, and the Metro Core management system, plus compound tasks, construction balancing, analysis tools, tutorial, sound, three-language and performance updates. World-map city selection and city transitions remain exclusive to the standalone edition. This community edition continues up to **v5.5**; the change list is in the [Chinese README](./README.md#本社区版新增v41--v55).
 
 ## Maintenance and community editions
 
-The original author, **VinsonFung**, will continue maintaining and updating this repository. **Please do not submit Pull Requests (PRs) to this repository.**
-
-You are welcome to create a community edition under the non-commercial license and deploy it to your own website. Clearly identify it as a community modification and prominently display the following attribution and links:
-
-- Original author: [VinsonFung](https://github.com/VinsonFung)
-- Original game website: [City & Metro](https://city-and-metro.pages.dev)
-- Original repository: [VinsonFung/city-and-metro](https://github.com/VinsonFung/city-and-metro)
+- **This repository** is a community edition maintained by [angelkoyou](https://github.com/angelkoyou). Open an [Issue](https://github.com/angelkoyou/city-and-metro-by-kuruu/issues) or send a PR for anything changed here.
+- **Upstream** is maintained by the original author, [VinsonFung](https://github.com/VinsonFung); the official site is [city-and-metro.pages.dev](https://city-and-metro.pages.dev). The upstream repository does not accept PRs — please report original-release issues there.
+- **Attribution** is kept intact: original author, license, and third-party notices. If you redistribute this fork, keep them as well and state your own changes.
 
 **Commercial use of both the original game and community editions is strictly prohibited.** This includes paid access, sales, advertising, commercial sponsorship, and other monetization. Free distribution, modification, or renaming does not create an exception. Retain the license, copyright notices, and third-party attribution, explain your changes, and do not present a community edition as an official release.
-
-Community-edition links will be collected and integrated into the original game website in the future, so players can discover and try different versions. Thank you for your understanding and cooperation.
 
 ## What you can do
 
@@ -93,7 +89,7 @@ All nine real cities support financial challenges and Free Build, with currency,
 
 ## Running and saving
 
-Open the [game website](https://city-and-metro.pages.dev) to play. You can also download this repository and open `index.html` in desktop Chrome, Edge, or Firefox, without installing dependencies or building the project.
+Open the [online edition](https://angelkoyou.github.io/city-and-metro-by-kuruu/) to play. You can also download this repository and open `index.html` in desktop Chrome, Edge, or Firefox, without installing dependencies or building the project.
 
 Progress and settings are stored in your current browser; no account is needed. Autosaves, manual saves, save renaming, and JSON import/export are supported. Export a backup before changing computers, browsers, or website addresses. Unconfirmed construction drafts are not saved.
 
@@ -118,6 +114,7 @@ Change bindings under **Settings → Controls**; in-game hints update with them.
 
 ## Copyright and license
 
-**Copyright © 2026 VinsonFung. All rights reserved. Commercial use is strictly prohibited.**
+The original work is **Copyright © 2026 VinsonFung. All rights reserved. Commercial use is strictly prohibited.**
+Changes since v4.1 in this community edition are by **angelkoyou** and are released under the same non-commercial terms; the copyright of the original work is unchanged.
 
 Non-commercial study, research, play, modification, and sharing are subject to [LICENSE.txt](./LICENSE.txt). Third-party code, data, and assets retain their own licenses. OpenStreetMap geographic data is provided under ODbL 1.0; see the [third-party notices](./THIRD_PARTY_NOTICES.txt).
